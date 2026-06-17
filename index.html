@@ -12,6 +12,117 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <section class="landing-page" id="landingPage">
+    <header class="landing-header">
+      <a class="brand" href="#landingPage" aria-label="Daily Growth">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
+        </span>
+        <span>Daily Growth</span>
+      </a>
+      <a class="landing-login-link" href="#authCard">เข้าสู่ระบบ</a>
+    </header>
+
+    <main class="landing-main">
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <p class="section-kicker">YOUR PLAYFUL GROWTH SPACE</p>
+          <h1>ทำให้การพัฒนาตัวเองในแต่ละวันน่าเข้าไปทำมากขึ้น</h1>
+          <p>Daily Growth ช่วยให้คุณบันทึกภารกิจ ความรู้สึก เรื่องดี ๆ และสิ่งที่อยากปรับ แล้วเปลี่ยนข้อมูลเล็ก ๆ เหล่านั้นให้เห็นเป็น Level, Timeline และ Growth Map ที่กลับมาดูได้ทุกวัน</p>
+          <div class="landing-actions">
+            <a class="primary-button" href="#authCard">เริ่มใช้งานเลย</a>
+            <a class="secondary-button" href="#features">ดูว่าทำอะไรได้บ้าง</a>
+          </div>
+        </div>
+        <div class="landing-preview" aria-hidden="true">
+          <div class="preview-card big">
+            <span>วันนี้</span>
+            <strong>72%</strong>
+            <i></i>
+          </div>
+          <div class="preview-card mood">
+            <span>mood</span>
+            <strong>😊 สงบ</strong>
+          </div>
+          <div class="preview-card level">
+            <span>Level</span>
+            <strong>12</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-section" id="features">
+        <p class="section-kicker">WHAT YOU GET</p>
+        <h2>ฟังก์ชันที่ทำให้การกลับมาใช้เว็บสนุกขึ้น</h2>
+        <div class="landing-feature-grid">
+          <article>
+            <span>01</span>
+            <h3>ภารกิจรายวัน</h3>
+            <p>วางแผนสิ่งที่อยากทำ เช็กว่าสำเร็จแล้ว และเห็นความคืบหน้าของวันแบบชัดเจน</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>EXP และ Level</h3>
+            <p>ทุกก้าวที่ทำสำเร็จสะสมเป็น EXP เพื่อให้เห็นว่าความพยายามเล็ก ๆ กำลังพาคุณไปไกลขึ้น</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>บันทึกความรู้สึก</h3>
+            <p>เลือก mood ของวัน เพื่อกลับมาดูความสัมพันธ์ระหว่างอารมณ์กับการลงมือทำ</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Three Good Things</h3>
+            <p>เก็บเรื่องดี ๆ และสิ่งที่อยากลองปรับ เพื่อให้การทบทวนตัวเองไม่หนักเกินไป</p>
+          </article>
+          <article>
+            <span>05</span>
+            <h3>Growth Timeline</h3>
+            <p>ดูเส้นทางการเติบโตย้อนหลัง เห็นสิ่งที่ทำสำเร็จและเรื่องราวสำคัญในแต่ละวัน</p>
+          </article>
+          <article>
+            <span>06</span>
+            <h3>Growth Map รายปี</h3>
+            <p>เห็นภาพรวมทั้งปีว่าวันไหนลงมือ วันไหนพัก และช่วงไหนที่คุณเติบโตต่อเนื่องที่สุด</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="auth-section" id="authCard">
+        <div class="auth-copy">
+          <p class="section-kicker">SIGN IN</p>
+          <h2>เข้าสู่พื้นที่ของคุณ</h2>
+          <p>สมัครหรือเข้าสู่ระบบด้วยอีเมลเพื่อเริ่มใช้งานบนเครื่องนี้ ข้อมูลการเติบโตจะถูกบันทึกไว้ในเบราว์เซอร์ของคุณ</p>
+        </div>
+        <form class="auth-card" id="authForm">
+          <button class="google-button" id="googleLoginBtn" type="button">
+            <span>G</span>
+            เข้าสู่ระบบด้วย Google
+          </button>
+          <div class="auth-divider"><span>หรือใช้อีเมล</span></div>
+          <label>
+            ชื่อที่อยากให้เรียก
+            <input type="text" id="authNameInput" maxlength="24" placeholder="เช่น ซันนี่" autocomplete="name">
+          </label>
+          <label>
+            อีเมล
+            <input type="email" id="authEmailInput" placeholder="you@example.com" required autocomplete="email">
+          </label>
+          <label>
+            รหัสผ่าน
+            <input type="password" id="authPasswordInput" minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร" required autocomplete="current-password">
+          </label>
+          <label class="remember-row">
+            <input type="checkbox" id="rememberLoginInput">
+            <span>จำอีเมลบนเครื่องนี้ และให้เบราว์เซอร์ช่วยจำรหัสผ่าน</span>
+          </label>
+          <p class="auth-note">เพื่อความปลอดภัย เว็บนี้ไม่บันทึกรหัสผ่านเป็นข้อความใน Local Storage</p>
+          <button class="primary-button" type="submit">เข้าสู่ระบบ / สมัครสมาชิก</button>
+        </form>
+      </section>
+    </main>
+  </section>
+
   <div class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="#today" aria-label="Daily Growth">

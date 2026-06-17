@@ -1,4 +1,5 @@
 const STORAGE_KEY = "daily-growth-data-v1";
+const AUTH_MEMORY_KEY = "daily-growth-auth-memory-v1";
 
 const defaultState = {
   days: {},
@@ -7,6 +8,8 @@ const defaultState = {
   reasonLogs: [],
   profile: {
     nickname: "",
+    email: "",
+    authProvider: "local",
     avatarId: "sunny",
     createdAt: null,
     nicknameUpdatedAt: null,
@@ -60,6 +63,13 @@ ensureDay(todayKey);
 markActiveDay();
 
 const elements = {
+  landingPage: document.querySelector("#landingPage"),
+  authForm: document.querySelector("#authForm"),
+  authNameInput: document.querySelector("#authNameInput"),
+  authEmailInput: document.querySelector("#authEmailInput"),
+  authPasswordInput: document.querySelector("#authPasswordInput"),
+  rememberLoginInput: document.querySelector("#rememberLoginInput"),
+  googleLoginBtn: document.querySelector("#googleLoginBtn"),
   fullDate: document.querySelector("#fullDate"),
   pageTitle: document.querySelector("#pageTitle"),
   progressPercent: document.querySelector("#progressPercent"),
@@ -137,11 +147,13 @@ function init() {
   renderYearOverview();
   renderAvatarPickers();
   renderProfile();
+  prepareAuthForm();
   bindEvents();
   if (hasProfile()) {
+    showApp();
     prepareOverdueCheck();
   } else {
-    showOnboardingChoice();
+    showLanding();
   }
 }
 
@@ -169,6 +181,8 @@ function normalizeProfile(profile) {
   }
   return {
     nickname: typeof profile.nickname === "string" ? profile.nickname.trim().slice(0, 24) : "",
+    email: typeof profile.email === "string" ? profile.email.trim().slice(0, 120) : "",
+    authProvider: typeof profile.authProvider === "string" ? profile.authProvider : "local",
     avatarId: avatars.some((avatar) => avatar.id === profile.avatarId) ? profile.avatarId : defaultState.profile.avatarId,
     createdAt: typeof profile.createdAt === "string" ? profile.createdAt : null,
     nicknameUpdatedAt: typeof profile.nicknameUpdatedAt === "string" ? profile.nicknameUpdatedAt : null,
@@ -422,6 +436,8 @@ function bindEvents() {
     selectDate(dayButton.dataset.date);
     switchView("today");
   });
+  elements.authForm.addEventListener("submit", handleAuthSubmit);
+  elements.googleLoginBtn.addEventListener("click", handleGoogleLogin);
   elements.onboardingStartBtn.addEventListener("click", showNicknameStep);
   elements.nicknameForm.addEventListener("submit", saveInitialNickname);
   elements.onboardingModal.addEventListener("cancel", (event) => event.preventDefault());
@@ -436,6 +452,64 @@ function bindEvents() {
     if (!closeButton) return;
     closeButton.closest("dialog")?.close();
   });
+}
+
+function prepareAuthForm() {
+  try {
+    const memory = JSON.parse(localStorage.getItem(AUTH_MEMORY_KEY));
+    if (!memory || typeof memory !== "object") return;
+    elements.authEmailInput.value = typeof memory.email === "string" ? memory.email : "";
+    elements.rememberLoginInput.checked = Boolean(memory.rememberEmail);
+  } catch {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+}
+
+function showLanding() {
+  document.body.classList.remove("is-authenticated");
+  elements.onboardingModal.close();
+}
+
+function showApp() {
+  document.body.classList.add("is-authenticated");
+  if (elements.onboardingModal.open) elements.onboardingModal.close();
+}
+
+function handleAuthSubmit(event) {
+  event.preventDefault();
+  const email = elements.authEmailInput.value.trim().toLowerCase();
+  const password = elements.authPasswordInput.value;
+  if (!email || password.length < 6) return;
+
+  if (elements.rememberLoginInput.checked) {
+    localStorage.setItem(AUTH_MEMORY_KEY, JSON.stringify({
+      email,
+      rememberEmail: true,
+    }));
+  } else {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+
+  const now = new Date().toISOString();
+  const fallbackName = email.split("@")[0] || "Daily Grower";
+  state.profile = {
+    ...state.profile,
+    nickname: (elements.authNameInput.value.trim() || fallbackName).slice(0, 24),
+    email,
+    authProvider: "email",
+    avatarId: state.profile.avatarId || defaultState.profile.avatarId,
+    createdAt: state.profile.createdAt || now,
+    nicknameUpdatedAt: state.profile.nicknameUpdatedAt || null,
+  };
+  saveState();
+  renderProfile();
+  showApp();
+  showImportMessage(`ยินดีต้อนรับ ${state.profile.nickname}`, "success");
+  prepareOverdueCheck();
+}
+
+function handleGoogleLogin() {
+  showImportMessage("ปุ่ม Google พร้อมด้านดีไซน์แล้ว แต่ต้องเชื่อม OAuth/Supabase ก่อนใช้งานจริง", "error");
 }
 
 function showOnboardingChoice() {
@@ -454,7 +528,7 @@ function logoutProfile() {
   state.profile = structuredClone(defaultState.profile);
   saveState();
   renderProfile();
-  showOnboardingChoice();
+  showLanding();
   showImportMessage("ออกจากระบบแล้ว ข้อมูลกิจกรรมเดิมยังอยู่ในเครื่องนี้", "success");
 }
 
@@ -471,7 +545,7 @@ function saveInitialNickname(event) {
   };
   saveState();
   renderProfile();
-  elements.onboardingModal.close();
+  showApp();
   showImportMessage(`ยินดีต้อนรับ ${state.profile.nickname}`, "success");
   prepareOverdueCheck();
 }

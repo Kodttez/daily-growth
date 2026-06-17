@@ -1,8 +1,149 @@
 const STORAGE_KEY = "daily-growth-data-v1";
 const AUTH_MEMORY_KEY = "daily-growth-auth-memory-v1";
+const AUTH_SESSION_KEY = "daily-growth-supabase-session-v1";
 const SUPABASE_URL = "https://dupafcuqsaxwkbwnhker.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
-const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) || null;
+const supabaseClient = createSupabaseAuthClient();
+
+function createSupabaseAuthClient() {
+  const headers = {
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+    Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${SUPABASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        data: null,
+        error: new Error(data.error_description || data.msg || data.message || "Supabase request failed"),
+      };
+    }
+    return { data, error: null };
+  }
+
+  function saveSession(session) {
+    if (!session?.access_token) return null;
+    const normalized = {
+      ...session,
+      expires_at: session.expires_at || Math.floor(Date.now() / 1000) + Number(session.expires_in || 3600),
+    };
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function readSession() {
+    try {
+      const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY));
+      if (!session?.access_token) return null;
+      if (session.expires_at && session.expires_at * 1000 < Date.now()) {
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        return null;
+      }
+      return session;
+    } catch {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      return null;
+    }
+  }
+
+  async function hydrateUser(session) {
+    if (!session?.access_token || session.user) return session;
+    const { data, error } = await request("/auth/v1/user", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (error) {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      throw error;
+    }
+    return saveSession({ ...session, user: data });
+  }
+
+  async function consumeOAuthHash() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = params.get("access_token");
+    if (!accessToken) return null;
+
+    const session = saveSession({
+      access_token: accessToken,
+      refresh_token: params.get("refresh_token") || "",
+      expires_in: Number(params.get("expires_in") || 3600),
+      token_type: params.get("token_type") || "bearer",
+    });
+    history.replaceState(null, "", `${window.location.origin}${window.location.pathname}`);
+    return hydrateUser(session);
+  }
+
+  return {
+    auth: {
+      async getSession() {
+        try {
+          const oauthSession = await consumeOAuthHash();
+          const session = oauthSession || await hydrateUser(readSession());
+          return { data: { session }, error: null };
+        } catch (error) {
+          return { data: { session: null }, error };
+        }
+      },
+      onAuthStateChange() {
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
+      async signInWithPassword({ email, password }) {
+        const result = await request("/auth/v1/token?grant_type=password", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        if (result.error) return result;
+        return { data: { session: saveSession(result.data) }, error: null };
+      },
+      async signUp({ email, password, options = {} }) {
+        const result = await request("/auth/v1/signup", {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            password,
+            data: options.data || {},
+            gotrue_meta_security: {
+              captcha_token: null,
+            },
+          }),
+        });
+        if (result.error) return result;
+        return {
+          data: {
+            session: result.data.access_token ? saveSession(result.data) : null,
+            user: result.data.user || result.data,
+          },
+          error: null,
+        };
+      },
+      async signInWithOAuth({ provider, options = {} }) {
+        const redirectTo = options.redirectTo || `${window.location.origin}${window.location.pathname}`;
+        window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(redirectTo)}`;
+        return { data: null, error: null };
+      },
+      async signOut() {
+        const session = readSession();
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        if (session?.access_token) {
+          await request("/auth/v1/logout", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        }
+        return { error: null };
+      },
+    },
+  };
+}
 
 const defaultState = {
   days: {},

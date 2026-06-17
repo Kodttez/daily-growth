@@ -302,6 +302,16 @@ svg {
   width: 19px;
 }
 
+.logout-button {
+  color: #cf4c72;
+}
+
+.logout-button:hover {
+  border-color: rgba(255, 111, 145, 0.55);
+  color: white;
+  background: linear-gradient(135deg, var(--coral), var(--purple));
+}
+
 .avatar {
   display: grid;
   width: 42px;
@@ -2487,13 +2497,6 @@ svg {
     right: 16px;
     bottom: 98px;
   }
-}
-
-@media (max-width: 360px) {
-  #exportBtn {
-    display: none;
-  }
-
 }
 
 @media (prefers-reduced-motion: reduce) {

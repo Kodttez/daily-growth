@@ -114,6 +114,7 @@ const elements = {
   nicknameInput: document.querySelector("#nicknameInput"),
   onboardingAvatarPicker: document.querySelector("#onboardingAvatarPicker"),
   profileButton: document.querySelector("#profileButton"),
+  logoutBtn: document.querySelector("#logoutBtn"),
   profileModal: document.querySelector("#profileModal"),
   profileForm: document.querySelector("#profileForm"),
   profileNameInput: document.querySelector("#profileNameInput"),
@@ -314,7 +315,7 @@ function renderDashboard() {
 
 function calculateStreak() {
   const activeDates = Object.entries(state.days)
-    .filter(([, day]) => day.visited)
+    .filter(([, day]) => hasGrowthActivity(day))
     .map(([key]) => key);
 
   let streak = 0;
@@ -325,7 +326,14 @@ function calculateStreak() {
     streak += 1;
     cursor.setDate(cursor.getDate() - 1);
   }
-  return Math.max(streak, 1);
+  return streak;
+}
+
+function hasGrowthActivity(day) {
+  return (day.tasks || []).some((task) => task.completed)
+    || (day.goodThings || []).some(Boolean)
+    || (day.improvements || []).some(Boolean)
+    || Boolean(day.mood);
 }
 
 function renderTasks() {
@@ -418,6 +426,7 @@ function bindEvents() {
   elements.nicknameForm.addEventListener("submit", saveInitialNickname);
   elements.onboardingModal.addEventListener("cancel", (event) => event.preventDefault());
   elements.profileButton.addEventListener("click", openProfileModal);
+  elements.logoutBtn.addEventListener("click", logoutProfile);
   elements.profileForm.addEventListener("submit", saveProfileNickname);
   elements.taskReasonForm.addEventListener("change", handleDeleteReasonChange);
   elements.taskReasonForm.addEventListener("submit", handleTaskReasonSubmit);
@@ -427,7 +436,6 @@ function bindEvents() {
     if (!closeButton) return;
     closeButton.closest("dialog")?.close();
   });
-  document.querySelector("#exportBtn").addEventListener("click", exportData);
 }
 
 function showOnboardingChoice() {
@@ -440,6 +448,14 @@ function showNicknameStep() {
   elements.onboardingChoice.classList.remove("active");
   elements.nicknameForm.classList.add("active");
   requestAnimationFrame(() => elements.nicknameInput.focus());
+}
+
+function logoutProfile() {
+  state.profile = structuredClone(defaultState.profile);
+  saveState();
+  renderProfile();
+  showOnboardingChoice();
+  showImportMessage("ออกจากระบบแล้ว ข้อมูลกิจกรรมเดิมยังอยู่ในเครื่องนี้", "success");
 }
 
 function saveInitialNickname(event) {
@@ -536,7 +552,15 @@ function getSelectedAvatarId(picker) {
 }
 
 function renderProfile(level = getProfileLevel()) {
-  if (!hasProfile()) return;
+  if (!hasProfile()) {
+    document.querySelector("#profileNickname").textContent = "Daily Grower";
+    document.querySelector("#profileLevel").textContent = level;
+    document.querySelector("#profileAvatar").innerHTML = createAvatarSvg(defaultState.profile.avatarId);
+    document.querySelector("#profileModalName").textContent = "Daily Grower";
+    document.querySelector("#profileModalLevel").textContent = level;
+    document.querySelector("#profileModalAvatar").innerHTML = createAvatarSvg(defaultState.profile.avatarId);
+    return;
+  }
   const nickname = state.profile.nickname;
   document.querySelector("#profileNickname").textContent = nickname;
   document.querySelector("#profileLevel").textContent = level;
@@ -781,6 +805,7 @@ function handleReflectionInput(event) {
   saveTimers[field] = setTimeout(() => {
     note.classList.add("show");
     setTimeout(() => note.classList.remove("show"), 1800);
+    renderDashboard();
     renderInsights();
     renderTimeline();
     renderYearOverview();
@@ -794,6 +819,7 @@ function handleMoodSelect(event) {
   day.mood = day.mood === button.dataset.mood ? "" : button.dataset.mood;
   saveState();
   renderMood();
+  renderDashboard();
   renderTimeline();
   renderYearOverview();
 }

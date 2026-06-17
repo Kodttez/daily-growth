@@ -2849,3 +2849,15 @@ body.is-authenticated .landing-page {
     transition-duration: 0.01ms !important;
   }
 }
+
+body:not(.is-authenticated) .app-shell {
+  display: none !important;
+}
+
+body.is-authenticated .landing-page {
+  display: none !important;
+}
+
+body.is-authenticated .app-shell {
+  display: block !important;
+}

@@ -37,6 +37,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.hidden {
+  display: none !important;
+}
+
 button,
 input,
 select {
@@ -63,6 +67,131 @@ svg {
 
 .app-shell {
   min-height: 100vh;
+}
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: linear-gradient(145deg, #fbf8f2, #fff3e4);
+}
+
+.auth-gate.hidden {
+  display: none;
+}
+
+.auth-card {
+  width: min(100%, 470px);
+  padding: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 30px 90px rgba(35, 44, 40, 0.16);
+  text-align: center;
+}
+
+.auth-card h1 {
+  margin: 10px 0 8px;
+  font-size: 27px;
+  line-height: 1.35;
+}
+
+.auth-card > p:not(.section-kicker),
+.auth-message {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.75;
+}
+
+.auth-form {
+  display: grid;
+  gap: 13px;
+  margin-top: 24px;
+  text-align: left;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  color: #53615c;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  outline: none;
+  color: var(--ink);
+  background: #fcfbf8;
+}
+
+.auth-form input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(238, 155, 98, 0.1);
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 5px;
+}
+
+.google-button {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.google-button span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: #4285f4;
+  font-family: "Manrope", sans-serif;
+  font-weight: 700;
+}
+
+.auth-warning {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  color: #8d4b24;
+  background: #fff0df;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.auth-message {
+  min-height: 18px;
+  margin: 12px 0 0;
+}
+
+.auth-message.error {
+  color: #c9655d;
+}
+
+.auth-message.success {
+  color: var(--green);
 }
 
 .sidebar {
@@ -336,7 +465,7 @@ svg {
   font-weight: 700;
 }
 
-.topbar-logo {
+.topbar-logo-button {
   display: grid;
   width: 44px;
   height: 44px;
@@ -346,16 +475,17 @@ svg {
   color: white;
   background: var(--orange);
   box-shadow: 0 7px 16px rgba(238, 155, 98, 0.24);
+  cursor: pointer;
+  transition: 180ms ease;
 }
 
-.topbar-logo svg {
+.topbar-logo-button:hover {
+  background: var(--orange-dark);
+  transform: translateY(-1px);
+}
+
+.topbar-logo-button svg {
   width: 27px;
-}
-
-.avatar svg,
-.profile-modal-avatar svg {
-  width: 100%;
-  height: 100%;
 }
 
 .view {
@@ -1733,6 +1863,38 @@ svg {
   background: #c9655d;
 }
 
+.sync-status {
+  position: fixed;
+  right: 28px;
+  top: 24px;
+  z-index: 45;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 24px rgba(38, 52, 47, 0.08);
+  font-family: "Manrope", sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.sync-status.saving,
+.sync-status.loading {
+  color: var(--orange-dark);
+  background: #fff4e8;
+}
+
+.sync-status.saved {
+  color: #5e8f70;
+  background: #f3faf5;
+}
+
+.sync-status.error {
+  color: #c9655d;
+  background: #fff0ee;
+}
+
 .onboarding-modal {
   width: min(92vw, 570px);
   padding: 0;
@@ -1852,101 +2014,6 @@ svg {
 
 #nicknameForm > .primary-button {
   min-width: 190px;
-}
-
-.avatar-picker-fieldset {
-  max-width: 440px;
-  margin: 18px auto;
-  padding: 0;
-  border: 0;
-}
-
-.avatar-picker-fieldset legend {
-  width: 100%;
-  margin-bottom: 10px;
-  color: #53615c;
-  font-size: 10px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.avatar-picker {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 7px;
-}
-
-.avatar-option {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-  cursor: pointer;
-  text-align: center;
-}
-
-#nicknameForm .avatar-option {
-  max-width: none;
-  margin: 0;
-  color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  text-align: center;
-}
-
-#nicknameForm .avatar-option input,
-.task-modal .avatar-option input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.avatar-option > span {
-  display: grid;
-  aspect-ratio: 1;
-  padding: 3px;
-  overflow: hidden;
-  place-items: center;
-  border: 2px solid transparent;
-  border-radius: 50%;
-  background: white;
-  transition: 160ms ease;
-}
-
-.avatar-option svg {
-  width: 100%;
-}
-
-.avatar-option small {
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.avatar-option:hover > span,
-.avatar-option input:focus-visible + span {
-  border-color: #efc09d;
-  transform: translateY(-2px);
-}
-
-.avatar-option input:checked + span {
-  border-color: var(--orange);
-  box-shadow: 0 0 0 3px rgba(238, 155, 98, 0.14);
-}
-
-.avatar-option input:checked ~ small {
-  color: var(--orange-dark);
-  font-weight: 700;
-}
-
-.profile-avatar-fieldset {
-  max-width: none;
-  margin: 5px 0 18px;
 }
 
 .profile-modal-hero {
@@ -2186,17 +2253,35 @@ svg {
     gap: 7px;
   }
 
+  .auth-card {
+    padding: 30px 20px;
+  }
+
+  .auth-card h1 {
+    font-size: 22px;
+  }
+
+  .auth-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-status {
+    top: auto;
+    right: 16px;
+    bottom: 92px;
+  }
+
   .topbar-actions .icon-button,
-  .topbar-logo {
+  .topbar-logo-button {
     width: 36px;
     height: 36px;
   }
 
-  .topbar-logo {
+  .topbar-logo-button {
     border-radius: 11px;
   }
 
-  .topbar-logo svg {
+  .topbar-logo-button svg {
     width: 22px;
   }
 
@@ -2210,11 +2295,6 @@ svg {
 
   .onboarding-actions {
     grid-template-columns: 1fr;
-  }
-
-  .avatar-picker {
-    grid-template-columns: repeat(4, 1fr);
-    row-gap: 10px;
   }
 
   .view {

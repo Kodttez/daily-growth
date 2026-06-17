@@ -1,5 +1,8 @@
 const STORAGE_KEY = "daily-growth-data-v1";
 const AUTH_MEMORY_KEY = "daily-growth-auth-memory-v1";
+const SUPABASE_URL = "https://dupafcuqsaxwkbwnhker.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
+const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) || null;
 
 const defaultState = {
   days: {},
@@ -149,12 +152,8 @@ function init() {
   renderProfile();
   prepareAuthForm();
   bindEvents();
-  if (hasProfile()) {
-    showApp();
-    prepareOverdueCheck();
-  } else {
-    showLanding();
-  }
+  showLanding();
+  initializeAuth();
 }
 
 function loadState() {
@@ -436,13 +435,13 @@ function bindEvents() {
     selectDate(dayButton.dataset.date);
     switchView("today");
   });
-  elements.authForm.addEventListener("submit", handleAuthSubmit);
-  elements.googleLoginBtn.addEventListener("click", handleGoogleLogin);
+  elements.authForm.addEventListener("submit", handleSupabaseAuthSubmit);
+  elements.googleLoginBtn.addEventListener("click", handleSupabaseGoogleLogin);
   elements.onboardingStartBtn.addEventListener("click", showNicknameStep);
   elements.nicknameForm.addEventListener("submit", saveInitialNickname);
   elements.onboardingModal.addEventListener("cancel", (event) => event.preventDefault());
   elements.profileButton.addEventListener("click", openProfileModal);
-  elements.logoutBtn.addEventListener("click", logoutProfile);
+  elements.logoutBtn.addEventListener("click", logoutSupabaseProfile);
   elements.profileForm.addEventListener("submit", saveProfileNickname);
   elements.taskReasonForm.addEventListener("change", handleDeleteReasonChange);
   elements.taskReasonForm.addEventListener("submit", handleTaskReasonSubmit);
@@ -473,6 +472,150 @@ function showLanding() {
 function showApp() {
   document.body.classList.add("is-authenticated");
   if (elements.onboardingModal.open) elements.onboardingModal.close();
+}
+
+async function initializeAuth() {
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณาตรวจสอบการโหลดหน้าเว็บ", "error");
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    showImportMessage(error.message, "error");
+    return;
+  }
+
+  applySupabaseSession(data.session);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    applySupabaseSession(session);
+  });
+}
+
+function applySupabaseSession(session) {
+  if (!session?.user) {
+    showLanding();
+    return;
+  }
+
+  syncProfileFromUser(session.user);
+  renderProfile();
+  showApp();
+  prepareOverdueCheck();
+}
+
+function syncProfileFromUser(user) {
+  const metadata = user.user_metadata || {};
+  const fallbackName = user.email?.split("@")[0] || "Daily Grower";
+  const displayName = metadata.name || metadata.full_name || state.profile.nickname || fallbackName;
+  state.profile = {
+    ...state.profile,
+    nickname: String(displayName).trim().slice(0, 24) || fallbackName,
+    email: user.email || state.profile.email || "",
+    authProvider: user.app_metadata?.provider || "email",
+    avatarId: state.profile.avatarId || defaultState.profile.avatarId,
+    createdAt: state.profile.createdAt || user.created_at || new Date().toISOString(),
+    nicknameUpdatedAt: state.profile.nicknameUpdatedAt || null,
+  };
+  saveState();
+}
+
+function rememberLoginEmail(email) {
+  if (elements.rememberLoginInput.checked) {
+    localStorage.setItem(AUTH_MEMORY_KEY, JSON.stringify({
+      email,
+      rememberEmail: true,
+    }));
+  } else {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+}
+
+function setAuthBusy(isBusy) {
+  elements.authForm.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isBusy;
+  });
+}
+
+async function handleSupabaseAuthSubmit(event) {
+  event.preventDefault();
+  const email = elements.authEmailInput.value.trim().toLowerCase();
+  const password = elements.authPasswordInput.value;
+  if (!email || password.length < 6) return;
+
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณารีเฟรชหน้าเว็บ", "error");
+    return;
+  }
+
+  rememberLoginEmail(email);
+  setAuthBusy(true);
+
+  try {
+    const signInResult = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (!signInResult.error) {
+      applySupabaseSession(signInResult.data.session);
+      showImportMessage("เข้าสู่ระบบสำเร็จ", "success");
+      return;
+    }
+
+    const fallbackName = email.split("@")[0] || "Daily Grower";
+    const name = elements.authNameInput.value.trim() || fallbackName;
+    const signUpResult = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name },
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+      },
+    });
+
+    if (signUpResult.error) throw signUpResult.error;
+
+    if (signUpResult.data.session) {
+      applySupabaseSession(signUpResult.data.session);
+      showImportMessage("สมัครสมาชิกและเข้าสู่ระบบสำเร็จ", "success");
+    } else {
+      showImportMessage("สมัครสมาชิกสำเร็จ กรุณาเช็กอีเมลเพื่อยืนยันบัญชี", "success");
+    }
+  } catch (error) {
+    showImportMessage(error.message || "ไม่สามารถเข้าสู่ระบบได้", "error");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function handleSupabaseGoogleLogin() {
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณารีเฟรชหน้าเว็บ", "error");
+    return;
+  }
+
+  rememberLoginEmail(elements.authEmailInput.value.trim().toLowerCase());
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
+
+  if (error) showImportMessage(error.message, "error");
+}
+
+async function logoutSupabaseProfile() {
+  if (supabaseClient) {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      showImportMessage(error.message, "error");
+      return;
+    }
+  }
+
+  state.profile = structuredClone(defaultState.profile);
+  saveState();
+  renderProfile();
+  showLanding();
+  showImportMessage("ออกจากระบบแล้ว ข้อมูลกิจกรรมเดิมยังอยู่ในเครื่องนี้", "success");
 }
 
 function handleAuthSubmit(event) {

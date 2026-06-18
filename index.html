@@ -10,43 +10,117 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <section class="auth-gate" id="authGate">
-    <div class="auth-card">
-      <span class="onboarding-logo">
-        <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
-      </span>
-      <p class="section-kicker">DAILY GROWTH CLOUD</p>
-      <h1>เข้าสู่ระบบเพื่อ Sync การเติบโตของคุณ</h1>
-      <p>ข้อมูลจะถูกบันทึกบน Supabase และเปิดต่อได้ทั้งมือถือกับคอมพิวเตอร์</p>
+  <section class="landing-page" id="landingPage">
+    <header class="landing-header">
+      <a class="brand" href="#landingPage" aria-label="Daily Growth">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
+        </span>
+        <span>Daily Growth</span>
+      </a>
+      <a class="landing-login-link" href="#authCard">เข้าสู่ระบบ</a>
+    </header>
 
-      <div class="auth-warning hidden" id="supabaseSetupWarning">
-        โปรดใส่ Supabase URL และ anon public key ในไฟล์ app.js ก่อนใช้งานระบบ Cloud Sync
-      </div>
-
-      <form class="auth-form" id="authForm">
-        <label>
-          Email
-          <input type="email" id="authEmail" required autocomplete="email" placeholder="you@example.com">
-        </label>
-        <label>
-          Password
-          <input type="password" id="authPassword" required minlength="6" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร">
-        </label>
-        <div class="auth-actions">
-          <button class="primary-button" id="signInButton" type="submit">เข้าสู่ระบบ</button>
-          <button class="secondary-button" id="signUpButton" type="button">สมัครสมาชิก</button>
+    <main class="landing-main">
+      <section class="landing-hero">
+        <div class="landing-copy">
+          <p class="section-kicker">YOUR PLAYFUL GROWTH SPACE</p>
+          <h1>ทำให้การพัฒนาตัวเองในแต่ละวันน่าเข้าไปทำมากขึ้น</h1>
+          <p>Daily Growth ช่วยให้คุณบันทึกภารกิจ ความรู้สึก เรื่องดี ๆ และสิ่งที่อยากปรับ แล้วเปลี่ยนข้อมูลเล็ก ๆ เหล่านั้นให้เห็นเป็น Level, Timeline และ Growth Map ที่กลับมาดูได้ทุกวัน</p>
+          <div class="landing-actions">
+            <a class="primary-button" href="#authCard">เริ่มใช้งานเลย</a>
+            <a class="secondary-button" href="#features">ดูว่าทำอะไรได้บ้าง</a>
+          </div>
         </div>
-      </form>
+        <div class="landing-preview" aria-hidden="true">
+          <div class="preview-card big">
+            <span>วันนี้</span>
+            <strong>72%</strong>
+            <i></i>
+          </div>
+          <div class="preview-card mood">
+            <span>mood</span>
+            <strong>😊 สงบ</strong>
+          </div>
+          <div class="preview-card level">
+            <span>Level</span>
+            <strong>12</strong>
+          </div>
+        </div>
+      </section>
 
-      <button class="google-button" id="googleLoginButton" type="button">
-        <span>G</span>
-        เข้าสู่ระบบด้วย Google
-      </button>
-      <p class="auth-message" id="authMessage" role="status" aria-live="polite"></p>
-    </div>
+      <section class="landing-section" id="features">
+        <p class="section-kicker">WHAT YOU GET</p>
+        <h2>ฟังก์ชันที่ทำให้การกลับมาใช้เว็บสนุกขึ้น</h2>
+        <div class="landing-feature-grid">
+          <article>
+            <span>01</span>
+            <h3>ภารกิจรายวัน</h3>
+            <p>วางแผนสิ่งที่อยากทำ เช็กว่าสำเร็จแล้ว และเห็นความคืบหน้าของวันแบบชัดเจน</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>EXP และ Level</h3>
+            <p>ทุกก้าวที่ทำสำเร็จสะสมเป็น EXP เพื่อให้เห็นว่าความพยายามเล็ก ๆ กำลังพาคุณไปไกลขึ้น</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>บันทึกความรู้สึก</h3>
+            <p>เลือก mood ของวัน เพื่อกลับมาดูความสัมพันธ์ระหว่างอารมณ์กับการลงมือทำ</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Three Good Things</h3>
+            <p>เก็บเรื่องดี ๆ และสิ่งที่อยากลองปรับ เพื่อให้การทบทวนตัวเองไม่หนักเกินไป</p>
+          </article>
+          <article>
+            <span>05</span>
+            <h3>Growth Timeline</h3>
+            <p>ดูเส้นทางการเติบโตย้อนหลัง เห็นสิ่งที่ทำสำเร็จและเรื่องราวสำคัญในแต่ละวัน</p>
+          </article>
+          <article>
+            <span>06</span>
+            <h3>Growth Map รายปี</h3>
+            <p>เห็นภาพรวมทั้งปีว่าวันไหนลงมือ วันไหนพัก และช่วงไหนที่คุณเติบโตต่อเนื่องที่สุด</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="auth-section" id="authCard">
+        <div class="auth-copy">
+          <p class="section-kicker">SIGN IN</p>
+          <h2>เข้าสู่พื้นที่ของคุณ</h2>
+          <p>สมัครหรือเข้าสู่ระบบด้วยอีเมลเพื่อเริ่มใช้งานบนเครื่องนี้ ข้อมูลการเติบโตจะถูกบันทึกไว้ในเบราว์เซอร์ของคุณ</p>
+        </div>
+        <form class="auth-card" id="authForm">
+          <button class="google-button" id="googleLoginBtn" type="button">
+            <span>G</span>
+            เข้าสู่ระบบด้วย Google
+          </button>
+          <div class="auth-divider"><span>หรือใช้อีเมล</span></div>
+          <label>
+            ชื่อที่อยากให้เรียก
+            <input type="text" id="authNameInput" maxlength="24" placeholder="เช่น ซันนี่" autocomplete="name">
+          </label>
+          <label>
+            อีเมล
+            <input type="email" id="authEmailInput" placeholder="you@example.com" required autocomplete="email">
+          </label>
+          <label>
+            รหัสผ่าน
+            <input type="password" id="authPasswordInput" minlength="6" placeholder="อย่างน้อย 6 ตัวอักษร" required autocomplete="current-password">
+          </label>
+          <label class="remember-row">
+            <input type="checkbox" id="rememberLoginInput">
+            <span>จำอีเมลบนเครื่องนี้ และให้เบราว์เซอร์ช่วยจำรหัสผ่าน</span>
+          </label>
+          <p class="auth-note">เพื่อความปลอดภัย เว็บนี้ไม่บันทึกรหัสผ่านเป็นข้อความใน Local Storage</p>
+          <button class="primary-button" type="submit">เข้าสู่ระบบ / สมัครสมาชิก</button>
+        </form>
+      </section>
+    </main>
   </section>
 
   <div class="app-shell">
@@ -102,22 +176,15 @@
       <header class="topbar">
         <div>
           <p class="eyebrow" id="fullDate"></p>
-          <h1 id="pageTitle">วันนี้ของคุณ</h1>
+          <h1 id="pageTitle">วันของคุณ</h1>
         </div>
         <div class="topbar-actions">
-          <button class="icon-button" id="importBtn" title="นำเข้าข้อมูล JSON" aria-label="นำเข้าข้อมูล JSON">
-            <svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 5h14"/></svg>
+          <button class="icon-button logout-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ">
+            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg>
           </button>
-          <input type="file" id="importInput" accept=".json,application/json" hidden>
-          <button class="icon-button" id="exportBtn" title="สำรองข้อมูล" aria-label="สำรองข้อมูล">
-            <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></svg>
-          </button>
-          <button class="topbar-logo-button" id="topbarProfileButton" aria-label="ดูและแก้ไขโปรไฟล์">
+          <span class="topbar-logo" aria-label="โลโก้ Daily Growth" role="img">
             <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
-          </button>
-          <button class="icon-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ">
-            <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5v16h-5"/></svg>
-          </button>
+          </span>
         </div>
       </header>
 
@@ -511,26 +578,38 @@
 
   <dialog class="onboarding-modal" id="onboardingModal">
     <section class="onboarding-card">
-      <span class="onboarding-logo">
-        <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
-      </span>
       <div class="onboarding-step active" id="onboardingChoice">
+        <div class="intro-hero">
+          <span class="onboarding-logo">
+            <svg viewBox="0 0 32 32"><path d="M16 27V14m0 2c-5 0-8-3.2-8-8 5 0 8 3.2 8 8Zm0 4c5 0 8-3.2 8-8-5 0-8 3.2-8 8Z"/></svg>
+          </span>
+          <span class="intro-bubble one">+EXP</span>
+          <span class="intro-bubble two">mood</span>
+        </div>
         <p class="section-kicker">WELCOME TO DAILY GROWTH</p>
-        <h2>คุณมีข้อมูลที่บันทึกไว้ด้วยไฟล์ JSON แล้วหรือยังครับ?</h2>
-        <p>นำข้อมูลเดิมกลับมาได้ทันที หรือเริ่มต้นพื้นที่เติบโตใหม่ของคุณ</p>
+        <h2>พื้นที่เล็ก ๆ ที่ช่วยให้วันของคุณสนุกขึ้น</h2>
+        <p>บันทึกภารกิจ ความรู้สึก และเรื่องดี ๆ ในแต่ละวัน แล้วดูการเติบโตของตัวเองผ่าน Level, Timeline และ Growth Map</p>
+        <div class="intro-feature-grid">
+          <span>ภารกิจรายวัน</span>
+          <span>สะสม EXP</span>
+          <span>ดูภาพรวมปี</span>
+        </div>
         <div class="onboarding-actions">
-          <button class="primary-button" id="onboardingImportBtn">มีแล้ว!</button>
-          <button class="secondary-button" id="onboardingNewBtn">ยังไม่มี</button>
+          <button class="primary-button" id="onboardingStartBtn">เข้าสู่ระบบ</button>
         </div>
       </div>
       <form class="onboarding-step" id="nicknameForm">
-        <p class="section-kicker">NICE TO MEET YOU</p>
-        <h2>อยากให้เราเรียกคุณว่าอะไร?</h2>
-        <p>ใส่ชื่อเล่นที่ทำให้พื้นที่นี้รู้สึกเป็นของคุณ</p>
+        <p class="section-kicker">LET'S START</p>
+        <h2>เข้าสู่พื้นที่เติบโตของคุณ</h2>
+        <p>ตั้งชื่อเล่นและเลือก avatar ที่ใช่ ระบบจะบันทึกข้อมูลให้คุณในเครื่องนี้โดยอัตโนมัติ</p>
         <label>
           ชื่อเล่น
-          <input type="text" id="nicknameInput" maxlength="24" placeholder="เช่น เจน" required autocomplete="nickname">
+          <input type="text" id="nicknameInput" maxlength="24" placeholder="เช่น ซันนี่" required autocomplete="nickname">
         </label>
+        <fieldset class="avatar-picker-fieldset">
+          <legend>เลือก avatar ของคุณ</legend>
+          <div class="avatar-picker" id="onboardingAvatarPicker"></div>
+        </fieldset>
         <button class="primary-button" type="submit">เริ่มต้นการเติบโต</button>
       </form>
     </section>
@@ -559,14 +638,17 @@
         <input type="text" id="profileNameInput" maxlength="24" required autocomplete="nickname">
       </label>
       <p class="profile-cooldown" id="profileCooldown"></p>
+      <fieldset class="avatar-picker-fieldset profile-avatar-fieldset">
+        <legend>เลือก avatar</legend>
+        <div class="avatar-picker" id="profileAvatarPicker"></div>
+      </fieldset>
       <div class="modal-actions">
         <button class="secondary-button" type="button" data-close-dialog>ไว้ก่อน</button>
-        <button class="primary-button" id="saveProfileButton" type="submit">บันทึกชื่อใหม่</button>
+        <button class="primary-button" id="saveProfileButton" type="submit">บันทึกโปรไฟล์</button>
       </div>
     </form>
   </dialog>
 
-  <div class="sync-status" id="syncStatus" role="status" aria-live="polite">Offline</div>
   <div class="import-message" id="importMessage" role="status" aria-live="polite"></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite">
@@ -578,6 +660,6 @@
   </div>
 
   <div class="confetti-layer" id="confettiLayer" aria-hidden="true"></div>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260617-auth"></script>
 </body>
 </html>

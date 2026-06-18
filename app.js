@@ -1,12 +1,149 @@
-// Replace these two values with your Supabase project values before deploy.
-// Use only the anon public / publishable key here. Never put a service role key in frontend code.
+const STORAGE_KEY = "daily-growth-data-v1";
+const AUTH_MEMORY_KEY = "daily-growth-auth-memory-v1";
+const AUTH_SESSION_KEY = "daily-growth-supabase-session-v1";
 const SUPABASE_URL = "https://dupafcuqsaxwkbwnhker.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
-const isSupabaseConfigured = !SUPABASE_URL.includes("YOUR_PROJECT_REF")
-  && !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_PUBLIC_KEY");
-const supabaseClient = isSupabaseConfigured && window.supabase
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
+const supabaseClient = createSupabaseAuthClient();
+
+function createSupabaseAuthClient() {
+  const headers = {
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+    Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${SUPABASE_URL}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        data: null,
+        error: new Error(data.error_description || data.msg || data.message || "Supabase request failed"),
+      };
+    }
+    return { data, error: null };
+  }
+
+  function saveSession(session) {
+    if (!session?.access_token) return null;
+    const normalized = {
+      ...session,
+      expires_at: session.expires_at || Math.floor(Date.now() / 1000) + Number(session.expires_in || 3600),
+    };
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function readSession() {
+    try {
+      const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY));
+      if (!session?.access_token) return null;
+      if (session.expires_at && session.expires_at * 1000 < Date.now()) {
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        return null;
+      }
+      return session;
+    } catch {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      return null;
+    }
+  }
+
+  async function hydrateUser(session) {
+    if (!session?.access_token || session.user) return session;
+    const { data, error } = await request("/auth/v1/user", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (error) {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      throw error;
+    }
+    return saveSession({ ...session, user: data });
+  }
+
+  async function consumeOAuthHash() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = params.get("access_token");
+    if (!accessToken) return null;
+
+    const session = saveSession({
+      access_token: accessToken,
+      refresh_token: params.get("refresh_token") || "",
+      expires_in: Number(params.get("expires_in") || 3600),
+      token_type: params.get("token_type") || "bearer",
+    });
+    history.replaceState(null, "", `${window.location.origin}${window.location.pathname}`);
+    return hydrateUser(session);
+  }
+
+  return {
+    auth: {
+      async getSession() {
+        try {
+          const oauthSession = await consumeOAuthHash();
+          const session = oauthSession || await hydrateUser(readSession());
+          return { data: { session }, error: null };
+        } catch (error) {
+          return { data: { session: null }, error };
+        }
+      },
+      onAuthStateChange() {
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
+      async signInWithPassword({ email, password }) {
+        const result = await request("/auth/v1/token?grant_type=password", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        if (result.error) return result;
+        return { data: { session: saveSession(result.data) }, error: null };
+      },
+      async signUp({ email, password, options = {} }) {
+        const result = await request("/auth/v1/signup", {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            password,
+            data: options.data || {},
+            gotrue_meta_security: {
+              captcha_token: null,
+            },
+          }),
+        });
+        if (result.error) return result;
+        return {
+          data: {
+            session: result.data.access_token ? saveSession(result.data) : null,
+            user: result.data.user || result.data,
+          },
+          error: null,
+        };
+      },
+      async signInWithOAuth({ provider, options = {} }) {
+        const redirectTo = options.redirectTo || `${window.location.origin}${window.location.pathname}`;
+        window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(redirectTo)}`;
+        return { data: null, error: null };
+      },
+      async signOut() {
+        const session = readSession();
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        if (session?.access_token) {
+          await request("/auth/v1/logout", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+        }
+        return { error: null };
+      },
+    },
+  };
+}
 
 const defaultState = {
   days: {},
@@ -15,10 +152,30 @@ const defaultState = {
   reasonLogs: [],
   profile: {
     nickname: "",
+    email: "",
+    authProvider: "local",
+    avatarId: "sunny",
     createdAt: null,
     nicknameUpdatedAt: null,
   },
 };
+
+const avatars = [
+  { id: "sunny", label: "โมจิ", skin: "#F5CDB1", hair: "#55433D", shirt: "#7DB8A3", accent: "#FFD37B", style: "mushroom", accessory: "sprout" },
+  { id: "brave", label: "ใบชา", skin: "#9D674B", hair: "#302827", shirt: "#78A2D2", accent: "#A9D7C0", style: "fluffy", accessory: "glasses" },
+  { id: "bloom", label: "ลูน่า", skin: "#E9B28D", hair: "#75503E", shirt: "#DB91A7", accent: "#F8C8D6", style: "twin", accessory: "flower" },
+  { id: "spark", label: "ซันนี่", skin: "#704A3C", hair: "#282326", shirt: "#B78DCE", accent: "#FFCF68", style: "buns", accessory: "stars" },
+  { id: "pride", label: "มินต์", skin: "#D99B74", hair: "#3D3545", shirt: "#F2A16F", accent: "#A98BD2", style: "rainbow", accessory: "heart" },
+  { id: "trans", label: "พุดดิ้ง", skin: "#F1C4A5", hair: "#A45E75", shirt: "#77BDCA", accent: "#F4ACC2", style: "beret", accessory: "beret" },
+  { id: "free", label: "สกาย", skin: "#B97A58", hair: "#3C302F", shirt: "#E1AB5C", accent: "#83C8C1", style: "cloud", accessory: "headphones" },
+  { id: "tonkla", label: "ต้นกล้า", skin: "#E8B58E", hair: "#403530", shirt: "#6FA58D", accent: "#B8D99C", style: "quiff", accessory: "bandage" },
+  { id: "phupha", label: "ภูผา", skin: "#8F5D45", hair: "#292526", shirt: "#6588B5", accent: "#E9B36E", style: "cap", accessory: "cap" },
+  { id: "natee", label: "นที", skin: "#F0C5A4", hair: "#6A4B3D", shirt: "#70AFC0", accent: "#A6D8E2", style: "buzz", accessory: "freckles" },
+  { id: "kaopan", label: "ข้าวปั้น", skin: "#C98562", hair: "#322A29", shirt: "#D98970", accent: "#F4C68A", style: "wavy", accessory: "earring" },
+  { id: "arthit", label: "อาทิตย์", skin: "#E2A77F", hair: "#2E292A", shirt: "#C99255", accent: "#FFD268", style: "undercut", accessory: "brow" },
+  { id: "copper", label: "คอปเปอร์", skin: "#A96D50", hair: "#713F2F", shirt: "#8975B2", accent: "#D7B8E8", style: "beanie", accessory: "beanie" },
+  { id: "ray", label: "เรย์", skin: "#F3CBB0", hair: "#4C3B35", shirt: "#6E9C9F", accent: "#F0A9A1", style: "sidepart", accessory: "scarf" },
+];
 
 const categoryColors = {
   "สุขภาพ": "#7eab8e",
@@ -37,17 +194,12 @@ const moodEmoji = {
   "เศร้า": "😔",
 };
 
-let state = structuredClone(defaultState);
+let state = loadState();
 let editingTaskId = null;
 let saveTimers = {};
 let pendingTaskAction = null;
 let overdueQueue = [];
 let overdueIndex = 0;
-let importFromOnboarding = false;
-let currentUser = null;
-let saveTimer = null;
-let saveInFlight = false;
-let pendingSave = false;
 
 const todayKey = getDateKey(new Date());
 let selectedDateKey = todayKey;
@@ -55,6 +207,13 @@ ensureDay(todayKey);
 markActiveDay();
 
 const elements = {
+  landingPage: document.querySelector("#landingPage"),
+  authForm: document.querySelector("#authForm"),
+  authNameInput: document.querySelector("#authNameInput"),
+  authEmailInput: document.querySelector("#authEmailInput"),
+  authPasswordInput: document.querySelector("#authPasswordInput"),
+  rememberLoginInput: document.querySelector("#rememberLoginInput"),
+  googleLoginBtn: document.querySelector("#googleLoginBtn"),
   fullDate: document.querySelector("#fullDate"),
   pageTitle: document.querySelector("#pageTitle"),
   progressPercent: document.querySelector("#progressPercent"),
@@ -95,7 +254,6 @@ const elements = {
   backToTodayBtn: document.querySelector("#backToTodayBtn"),
   yearSelect: document.querySelector("#yearSelect"),
   yearMonths: document.querySelector("#yearMonths"),
-  importInput: document.querySelector("#importInput"),
   importMessage: document.querySelector("#importMessage"),
   taskReasonModal: document.querySelector("#taskReasonModal"),
   taskReasonForm: document.querySelector("#taskReasonForm"),
@@ -105,30 +263,23 @@ const elements = {
   overdueForm: document.querySelector("#overdueForm"),
   onboardingModal: document.querySelector("#onboardingModal"),
   onboardingChoice: document.querySelector("#onboardingChoice"),
+  onboardingStartBtn: document.querySelector("#onboardingStartBtn"),
   nicknameForm: document.querySelector("#nicknameForm"),
   nicknameInput: document.querySelector("#nicknameInput"),
+  onboardingAvatarPicker: document.querySelector("#onboardingAvatarPicker"),
   profileButton: document.querySelector("#profileButton"),
-  topbarProfileButton: document.querySelector("#topbarProfileButton"),
+  logoutBtn: document.querySelector("#logoutBtn"),
   profileModal: document.querySelector("#profileModal"),
   profileForm: document.querySelector("#profileForm"),
   profileNameInput: document.querySelector("#profileNameInput"),
   saveProfileButton: document.querySelector("#saveProfileButton"),
   profileCooldown: document.querySelector("#profileCooldown"),
-  authGate: document.querySelector("#authGate"),
-  authForm: document.querySelector("#authForm"),
-  authEmail: document.querySelector("#authEmail"),
-  authPassword: document.querySelector("#authPassword"),
-  authMessage: document.querySelector("#authMessage"),
-  googleLoginButton: document.querySelector("#googleLoginButton"),
-  signUpButton: document.querySelector("#signUpButton"),
-  logoutBtn: document.querySelector("#logoutBtn"),
-  syncStatus: document.querySelector("#syncStatus"),
-  supabaseSetupWarning: document.querySelector("#supabaseSetupWarning"),
+  profileAvatarPicker: document.querySelector("#profileAvatarPicker"),
 };
 
 init();
 
-async function init() {
+function init() {
   renderDate();
   renderSelectedDate();
   renderDashboard();
@@ -138,9 +289,30 @@ async function init() {
   renderInsights();
   renderTimeline();
   renderYearOverview();
+  renderAvatarPickers();
   renderProfile();
+  prepareAuthForm();
   bindEvents();
-  await initAuth();
+  showLanding();
+  initializeAuth();
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved) return structuredClone(defaultState);
+    const migrated = {
+      ...defaultState,
+      ...saved,
+      days: saved.days || {},
+      reasonLogs: Array.isArray(saved.reasonLogs) ? saved.reasonLogs : [],
+      profile: normalizeProfile(saved.profile),
+    };
+    migrated.points = countCompletedTasks(migrated.days);
+    return migrated;
+  } catch {
+    return structuredClone(defaultState);
+  }
 }
 
 function normalizeProfile(profile) {
@@ -149,6 +321,9 @@ function normalizeProfile(profile) {
   }
   return {
     nickname: typeof profile.nickname === "string" ? profile.nickname.trim().slice(0, 24) : "",
+    email: typeof profile.email === "string" ? profile.email.trim().slice(0, 120) : "",
+    authProvider: typeof profile.authProvider === "string" ? profile.authProvider : "local",
+    avatarId: avatars.some((avatar) => avatar.id === profile.avatarId) ? profile.avatarId : defaultState.profile.avatarId,
     createdAt: typeof profile.createdAt === "string" ? profile.createdAt : null,
     nicknameUpdatedAt: typeof profile.nicknameUpdatedAt === "string" ? profile.nicknameUpdatedAt : null,
   };
@@ -165,245 +340,7 @@ function countCompletedTasks(days) {
 }
 
 function saveState() {
-  queueCloudSave();
-}
-
-async function initAuth() {
-  if (!supabaseClient) {
-    elements.supabaseSetupWarning.classList.remove("hidden");
-    elements.authGate.classList.remove("hidden");
-    setSyncStatus("Setup needed", "error");
-    return;
-  }
-
-  setSyncStatus("Loading", "loading");
-  const { data, error } = await supabaseClient.auth.getSession();
-  if (error) {
-    showAuthMessage(error.message, "error");
-    setSyncStatus("Auth error", "error");
-  }
-
-  currentUser = data.session?.user || null;
-  if (currentUser) {
-    await loadUserCloudState();
-    showAppForUser();
-  } else {
-    showAuthGate();
-  }
-
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    currentUser = session?.user || null;
-    if (currentUser) {
-      await loadUserCloudState();
-      showAppForUser();
-    } else {
-      state = structuredClone(defaultState);
-      currentUser = null;
-      refreshAllViews();
-      showAuthGate();
-    }
-  });
-}
-
-function bindAuthEvents() {
-  elements.authForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    await signInWithEmail();
-  });
-  elements.signUpButton.addEventListener("click", signUpWithEmail);
-  elements.googleLoginButton.addEventListener("click", signInWithGoogle);
-  elements.logoutBtn.addEventListener("click", async () => {
-    await supabaseClient?.auth.signOut();
-  });
-}
-
-function showAuthGate() {
-  elements.authGate.classList.remove("hidden");
-  setSyncStatus("Signed out", "offline");
-}
-
-function showAppForUser() {
-  elements.authGate.classList.add("hidden");
-  setSyncStatus("Saved", "saved");
-  if (hasProfile()) {
-    prepareOverdueCheck();
-  } else {
-    showOnboardingChoice();
-  }
-}
-
-async function signInWithEmail() {
-  if (!supabaseClient) return;
-  showAuthMessage("กำลังเข้าสู่ระบบ...", "loading");
-  const { error } = await supabaseClient.auth.signInWithPassword({
-    email: elements.authEmail.value.trim(),
-    password: elements.authPassword.value,
-  });
-  if (error) showAuthMessage(error.message, "error");
-}
-
-async function signUpWithEmail() {
-  if (!supabaseClient) return;
-  showAuthMessage("กำลังสมัครสมาชิก...", "loading");
-  const { error } = await supabaseClient.auth.signUp({
-    email: elements.authEmail.value.trim(),
-    password: elements.authPassword.value,
-    options: { emailRedirectTo: window.location.href },
-  });
-  if (error) {
-    showAuthMessage(error.message, "error");
-  } else {
-    showAuthMessage("สมัครสำเร็จแล้ว กรุณาตรวจอีเมลเพื่อยืนยันบัญชี", "success");
-  }
-}
-
-async function signInWithGoogle() {
-  if (!supabaseClient) return;
-  showAuthMessage("กำลังเปิด Google Login...", "loading");
-  const { error } = await supabaseClient.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: window.location.origin + window.location.pathname },
-  });
-  if (error) showAuthMessage(error.message, "error");
-}
-
-function showAuthMessage(message, type = "") {
-  elements.authMessage.textContent = message;
-  elements.authMessage.className = `auth-message ${type}`;
-}
-
-async function loadUserCloudState() {
-  if (!currentUser || !supabaseClient) return;
-  setSyncStatus("Loading", "loading");
-
-  const [profileResult, daysResult, logsResult] = await Promise.all([
-    supabaseClient.from("profiles").select("*").eq("user_id", currentUser.id).maybeSingle(),
-    supabaseClient.from("daily_entries").select("*").eq("user_id", currentUser.id),
-    supabaseClient.from("reason_logs").select("*").eq("user_id", currentUser.id),
-  ]);
-
-  if (profileResult.error || daysResult.error || logsResult.error) {
-    const message = profileResult.error?.message || daysResult.error?.message || logsResult.error?.message;
-    showImportMessage(`โหลดข้อมูลไม่สำเร็จ: ${message}`, "error");
-    setSyncStatus("Load failed", "error");
-    return;
-  }
-
-  const days = {};
-  (daysResult.data || []).forEach((entry) => {
-    days[entry.entry_date] = {
-      tasks: entry.tasks || [],
-      goodThings: normalizeTextList(entry.good_things),
-      improvements: normalizeTextList(entry.improvements),
-      mood: entry.mood || "",
-      visited: Boolean(entry.visited),
-    };
-  });
-
-  state = {
-    ...structuredClone(defaultState),
-    days,
-    reasonLogs: (logsResult.data || []).map((log) => ({
-      id: log.id,
-      type: log.type,
-      reason: log.reason,
-      taskTitle: log.task_title,
-      category: log.category,
-      sourceDate: log.source_date,
-      targetDate: log.target_date,
-      createdAt: log.created_at,
-    })),
-    profile: normalizeProfile(profileResult.data ? {
-      nickname: profileResult.data.nickname,
-      createdAt: profileResult.data.created_at,
-      nicknameUpdatedAt: profileResult.data.nickname_updated_at,
-    } : null),
-  };
-  state.points = countCompletedTasks(state.days);
-  ensureDay(todayKey);
-  markActiveDay();
-  refreshAllViews();
-  setSyncStatus("Saved", "saved");
-}
-
-function queueCloudSave() {
-  if (!currentUser || !supabaseClient) return;
-  setSyncStatus("Saving", "saving");
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveStateToSupabase, 350);
-}
-
-async function saveStateToSupabase() {
-  if (!currentUser || !supabaseClient) return;
-  if (saveInFlight) {
-    pendingSave = true;
-    return;
-  }
-
-  saveInFlight = true;
-  pendingSave = false;
-  setSyncStatus("Saving", "saving");
-
-  try {
-    const profilePayload = {
-      user_id: currentUser.id,
-      nickname: state.profile.nickname || null,
-      nickname_updated_at: state.profile.nicknameUpdatedAt,
-      total_exp: countCompletedTasks(state.days),
-      current_streak: calculateStreak(),
-      updated_at: new Date().toISOString(),
-    };
-    if (state.profile.createdAt) profilePayload.created_at = state.profile.createdAt;
-
-    const dayRows = Object.entries(state.days).map(([key, day]) => ({
-      user_id: currentUser.id,
-      entry_date: key,
-      tasks: day.tasks || [],
-      good_things: normalizeTextList(day.goodThings),
-      improvements: normalizeTextList(day.improvements),
-      mood: day.mood || "",
-      visited: Boolean(day.visited),
-      updated_at: new Date().toISOString(),
-    }));
-
-    const logRows = state.reasonLogs.map((log) => ({
-      id: log.id || createId(),
-      user_id: currentUser.id,
-      type: log.type,
-      reason: log.reason,
-      task_title: log.taskTitle,
-      category: log.category,
-      source_date: log.sourceDate || null,
-      target_date: log.targetDate || null,
-      created_at: log.createdAt || new Date().toISOString(),
-    }));
-
-    const profileSave = supabaseClient.from("profiles").upsert(profilePayload, { onConflict: "user_id" });
-    const daysSave = dayRows.length
-      ? supabaseClient.from("daily_entries").upsert(dayRows, { onConflict: "user_id,entry_date" })
-      : Promise.resolve({ error: null });
-    const logsSave = logRows.length
-      ? supabaseClient.from("reason_logs").upsert(logRows, { onConflict: "id" })
-      : Promise.resolve({ error: null });
-
-    const results = await Promise.all([profileSave, daysSave, logsSave]);
-    const error = results.find((result) => result.error)?.error;
-    if (error) throw error;
-    setSyncStatus("Saved", "saved");
-  } catch (error) {
-    console.error(error);
-    setSyncStatus("Save failed", "error");
-    showImportMessage(`บันทึกไม่สำเร็จ: ${error.message}`, "error");
-  } finally {
-    saveInFlight = false;
-    if (pendingSave) saveStateToSupabase();
-  }
-}
-
-function setSyncStatus(text, status) {
-  if (!elements.syncStatus) return;
-  elements.syncStatus.textContent = text;
-  elements.syncStatus.className = `sync-status ${status}`;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function ensureDay(key) {
@@ -532,7 +469,7 @@ function renderDashboard() {
 
 function calculateStreak() {
   const activeDates = Object.entries(state.days)
-    .filter(([, day]) => day.visited)
+    .filter(([, day]) => hasGrowthActivity(day))
     .map(([key]) => key);
 
   let streak = 0;
@@ -543,7 +480,14 @@ function calculateStreak() {
     streak += 1;
     cursor.setDate(cursor.getDate() - 1);
   }
-  return Math.max(streak, 1);
+  return streak;
+}
+
+function hasGrowthActivity(day) {
+  return (day.tasks || []).some((task) => task.completed)
+    || (day.goodThings || []).some(Boolean)
+    || (day.improvements || []).some(Boolean)
+    || Boolean(day.mood);
 }
 
 function renderTasks() {
@@ -606,7 +550,6 @@ function renderMood() {
 }
 
 function bindEvents() {
-  bindAuthEvents();
   document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
@@ -633,20 +576,13 @@ function bindEvents() {
     selectDate(dayButton.dataset.date);
     switchView("today");
   });
-  document.querySelector("#importBtn").addEventListener("click", () => {
-    importFromOnboarding = false;
-    elements.importInput.click();
-  });
-  elements.importInput.addEventListener("change", importData);
-  document.querySelector("#onboardingImportBtn").addEventListener("click", () => {
-    importFromOnboarding = true;
-    elements.importInput.click();
-  });
-  document.querySelector("#onboardingNewBtn").addEventListener("click", showNicknameStep);
+  elements.authForm.addEventListener("submit", handleSupabaseAuthSubmit);
+  elements.googleLoginBtn.addEventListener("click", handleSupabaseGoogleLogin);
+  elements.onboardingStartBtn.addEventListener("click", showNicknameStep);
   elements.nicknameForm.addEventListener("submit", saveInitialNickname);
   elements.onboardingModal.addEventListener("cancel", (event) => event.preventDefault());
   elements.profileButton.addEventListener("click", openProfileModal);
-  elements.topbarProfileButton.addEventListener("click", openProfileModal);
+  elements.logoutBtn.addEventListener("click", logoutSupabaseProfile);
   elements.profileForm.addEventListener("submit", saveProfileNickname);
   elements.taskReasonForm.addEventListener("change", handleDeleteReasonChange);
   elements.taskReasonForm.addEventListener("submit", handleTaskReasonSubmit);
@@ -656,7 +592,208 @@ function bindEvents() {
     if (!closeButton) return;
     closeButton.closest("dialog")?.close();
   });
-  document.querySelector("#exportBtn").addEventListener("click", exportData);
+}
+
+function prepareAuthForm() {
+  try {
+    const memory = JSON.parse(localStorage.getItem(AUTH_MEMORY_KEY));
+    if (!memory || typeof memory !== "object") return;
+    elements.authEmailInput.value = typeof memory.email === "string" ? memory.email : "";
+    elements.rememberLoginInput.checked = Boolean(memory.rememberEmail);
+  } catch {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+}
+
+function showLanding() {
+  document.body.classList.remove("is-authenticated");
+  elements.onboardingModal.close();
+}
+
+function showApp() {
+  document.body.classList.add("is-authenticated");
+  if (elements.onboardingModal.open) elements.onboardingModal.close();
+}
+
+async function initializeAuth() {
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณาตรวจสอบการโหลดหน้าเว็บ", "error");
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    showImportMessage(error.message, "error");
+    return;
+  }
+
+  applySupabaseSession(data.session);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    applySupabaseSession(session);
+  });
+}
+
+function applySupabaseSession(session) {
+  if (!session?.user) {
+    showLanding();
+    return;
+  }
+
+  syncProfileFromUser(session.user);
+  renderProfile();
+  showApp();
+  prepareOverdueCheck();
+}
+
+function syncProfileFromUser(user) {
+  const metadata = user.user_metadata || {};
+  const fallbackName = user.email?.split("@")[0] || "Daily Grower";
+  const displayName = metadata.name || metadata.full_name || state.profile.nickname || fallbackName;
+  state.profile = {
+    ...state.profile,
+    nickname: String(displayName).trim().slice(0, 24) || fallbackName,
+    email: user.email || state.profile.email || "",
+    authProvider: user.app_metadata?.provider || "email",
+    avatarId: state.profile.avatarId || defaultState.profile.avatarId,
+    createdAt: state.profile.createdAt || user.created_at || new Date().toISOString(),
+    nicknameUpdatedAt: state.profile.nicknameUpdatedAt || null,
+  };
+  saveState();
+}
+
+function rememberLoginEmail(email) {
+  if (elements.rememberLoginInput.checked) {
+    localStorage.setItem(AUTH_MEMORY_KEY, JSON.stringify({
+      email,
+      rememberEmail: true,
+    }));
+  } else {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+}
+
+function setAuthBusy(isBusy) {
+  elements.authForm.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isBusy;
+  });
+}
+
+async function handleSupabaseAuthSubmit(event) {
+  event.preventDefault();
+  const email = elements.authEmailInput.value.trim().toLowerCase();
+  const password = elements.authPasswordInput.value;
+  if (!email || password.length < 6) return;
+
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณารีเฟรชหน้าเว็บ", "error");
+    return;
+  }
+
+  rememberLoginEmail(email);
+  setAuthBusy(true);
+
+  try {
+    const signInResult = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (!signInResult.error) {
+      applySupabaseSession(signInResult.data.session);
+      showImportMessage("เข้าสู่ระบบสำเร็จ", "success");
+      return;
+    }
+
+    const fallbackName = email.split("@")[0] || "Daily Grower";
+    const name = elements.authNameInput.value.trim() || fallbackName;
+    const signUpResult = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name },
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+      },
+    });
+
+    if (signUpResult.error) throw signUpResult.error;
+
+    if (signUpResult.data.session) {
+      applySupabaseSession(signUpResult.data.session);
+      showImportMessage("สมัครสมาชิกและเข้าสู่ระบบสำเร็จ", "success");
+    } else {
+      showImportMessage("สมัครสมาชิกสำเร็จ กรุณาเช็กอีเมลเพื่อยืนยันบัญชี", "success");
+    }
+  } catch (error) {
+    showImportMessage(error.message || "ไม่สามารถเข้าสู่ระบบได้", "error");
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function handleSupabaseGoogleLogin() {
+  if (!supabaseClient) {
+    showImportMessage("ไม่พบตัวเชื่อม Supabase กรุณารีเฟรชหน้าเว็บ", "error");
+    return;
+  }
+
+  rememberLoginEmail(elements.authEmailInput.value.trim().toLowerCase());
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
+
+  if (error) showImportMessage(error.message, "error");
+}
+
+async function logoutSupabaseProfile() {
+  if (supabaseClient) {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      showImportMessage(error.message, "error");
+      return;
+    }
+  }
+
+  state.profile = structuredClone(defaultState.profile);
+  saveState();
+  renderProfile();
+  showLanding();
+  showImportMessage("ออกจากระบบแล้ว ข้อมูลกิจกรรมเดิมยังอยู่ในเครื่องนี้", "success");
+}
+
+function handleAuthSubmit(event) {
+  event.preventDefault();
+  const email = elements.authEmailInput.value.trim().toLowerCase();
+  const password = elements.authPasswordInput.value;
+  if (!email || password.length < 6) return;
+
+  if (elements.rememberLoginInput.checked) {
+    localStorage.setItem(AUTH_MEMORY_KEY, JSON.stringify({
+      email,
+      rememberEmail: true,
+    }));
+  } else {
+    localStorage.removeItem(AUTH_MEMORY_KEY);
+  }
+
+  const now = new Date().toISOString();
+  const fallbackName = email.split("@")[0] || "Daily Grower";
+  state.profile = {
+    ...state.profile,
+    nickname: (elements.authNameInput.value.trim() || fallbackName).slice(0, 24),
+    email,
+    authProvider: "email",
+    avatarId: state.profile.avatarId || defaultState.profile.avatarId,
+    createdAt: state.profile.createdAt || now,
+    nicknameUpdatedAt: state.profile.nicknameUpdatedAt || null,
+  };
+  saveState();
+  renderProfile();
+  showApp();
+  showImportMessage(`ยินดีต้อนรับ ${state.profile.nickname}`, "success");
+  prepareOverdueCheck();
+}
+
+function handleGoogleLogin() {
+  showImportMessage("ปุ่ม Google พร้อมด้านดีไซน์แล้ว แต่ต้องเชื่อม OAuth/Supabase ก่อนใช้งานจริง", "error");
 }
 
 function showOnboardingChoice() {
@@ -671,6 +808,14 @@ function showNicknameStep() {
   requestAnimationFrame(() => elements.nicknameInput.focus());
 }
 
+function logoutProfile() {
+  state.profile = structuredClone(defaultState.profile);
+  saveState();
+  renderProfile();
+  showLanding();
+  showImportMessage("ออกจากระบบแล้ว ข้อมูลกิจกรรมเดิมยังอยู่ในเครื่องนี้", "success");
+}
+
 function saveInitialNickname(event) {
   event.preventDefault();
   const nickname = elements.nicknameInput.value.trim();
@@ -678,12 +823,13 @@ function saveInitialNickname(event) {
   const now = new Date().toISOString();
   state.profile = {
     nickname: nickname.slice(0, 24),
+    avatarId: getSelectedAvatarId(elements.onboardingAvatarPicker),
     createdAt: now,
     nicknameUpdatedAt: null,
   };
   saveState();
   renderProfile();
-  elements.onboardingModal.close();
+  showApp();
   showImportMessage(`ยินดีต้อนรับ ${state.profile.nickname}`, "success");
   prepareOverdueCheck();
 }
@@ -692,19 +838,94 @@ function getProfileLevel() {
   return Math.floor(countCompletedTasks(state.days) / 10) + 1;
 }
 
-function getInitials(nickname) {
-  return [...(nickname || "DG").trim()].slice(0, 2).join("").toUpperCase();
+function getAvatar(id) {
+  return avatars.find((avatar) => avatar.id === id) || avatars[0];
+}
+
+function createAvatarSvg(avatarId) {
+  const avatar = getAvatar(avatarId);
+  const hairStyles = {
+    mushroom: `<path d="M10 19C9 11 14 7 22 7s13 5 12 13c-5-1-9-3-12-7-2 4-6 6-12 6Z" fill="${avatar.hair}"/><path d="M11 17v7M33 17v7" stroke="${avatar.hair}" stroke-width="4" stroke-linecap="round"/>`,
+    fluffy: `<circle cx="13" cy="14" r="5" fill="${avatar.hair}"/><circle cx="19" cy="10" r="5" fill="${avatar.hair}"/><circle cx="26" cy="10" r="5" fill="${avatar.hair}"/><circle cx="32" cy="15" r="5" fill="${avatar.hair}"/><path d="M10 20c0-7 5-12 12-12s12 5 12 12l-5-4-3 3-4-5-4 4-3-3-5 5Z" fill="${avatar.hair}"/>`,
+    twin: `<path d="M9 22C8 12 13 7 22 7s14 5 13 15l-5 10H14L9 22Z" fill="${avatar.hair}"/><path d="M11 17c5-1 9-4 11-8 3 5 7 7 12 8" fill="none" stroke="${avatar.hair}" stroke-width="3"/>`,
+    buns: `<circle cx="13" cy="10" r="6" fill="${avatar.hair}"/><circle cx="31" cy="10" r="6" fill="${avatar.hair}"/><path d="M10 20C10 11 15 7 22 7s12 5 12 13c-5-1-9-3-12-7-3 4-7 6-12 7Z" fill="${avatar.hair}"/>`,
+    rainbow: `<path d="M9 20C9 11 14 6 22 6s13 5 13 14c-5-2-9-5-12-9-3 5-8 8-14 9Z" fill="${avatar.hair}"/><path d="M12 13c5-5 13-6 19 0" fill="none" stroke="#F08A8A" stroke-width="2"/><path d="M14 11c4-3 10-4 15 0" fill="none" stroke="#F3C36B" stroke-width="2"/><path d="M17 9c3-1 6-1 9 0" fill="none" stroke="#77BDA8" stroke-width="2"/>`,
+    beret: `<path d="M10 20C10 11 15 7 22 7s12 5 12 14c-4-2-8-5-10-10-3 5-8 8-14 9Z" fill="${avatar.hair}"/><path d="M29 12c3 5 3 12 0 17" stroke="${avatar.hair}" stroke-width="4" stroke-linecap="round"/>`,
+    cloud: `<circle cx="13" cy="14" r="5" fill="${avatar.hair}"/><circle cx="19" cy="10" r="5" fill="${avatar.hair}"/><circle cx="26" cy="10" r="5" fill="${avatar.hair}"/><circle cx="32" cy="14" r="5" fill="${avatar.hair}"/><path d="M10 20c3-6 7-9 12-9s9 3 12 9c-5-1-9-3-12-7-3 4-7 6-12 7Z" fill="${avatar.hair}"/>`,
+    quiff: `<path d="M10 19c0-7 4-11 11-12-1-4 4-6 8-4-2 1-3 3-3 5 5 1 8 5 8 11-5-1-9-4-11-8-3 4-7 7-13 8Z" fill="${avatar.hair}"/>`,
+    cap: `<path d="M10 20c0-8 5-12 12-12 6 0 11 4 12 11-5-1-9-4-12-7-3 4-7 7-12 8Z" fill="${avatar.hair}"/>`,
+    buzz: `<path d="M11 17c1-7 5-10 11-10s10 3 11 10c-4-1-8-3-11-6-3 3-7 5-11 6Z" fill="${avatar.hair}"/><path d="M14 10c5-3 11-3 16 0" fill="none" stroke="${avatar.accent}" stroke-width="1.2" opacity=".65"/>`,
+    wavy: `<path d="M9 20c0-8 5-13 13-13 7 0 12 5 12 13l-4-4-3 2-4-5-4 4-4-3-6 6Z" fill="${avatar.hair}"/>`,
+    undercut: `<path d="M10 19c1-8 5-12 12-12 5 0 9 2 11 7-5 0-10-1-14-4-1 4-4 7-9 9Z" fill="${avatar.hair}"/><path d="M29 8c-2-3-7-5-11-2 5-5 12-5 15-1l-4 3Z" fill="${avatar.hair}"/>`,
+    beanie: `<path d="M10 20c0-8 5-12 12-12s12 4 12 12c-5-1-9-4-12-8-3 4-7 7-12 8Z" fill="${avatar.hair}"/>`,
+    sidepart: `<path d="M10 19c0-8 5-12 12-12 7 0 11 4 12 11-6 0-11-3-14-7-2 4-5 6-10 8Z" fill="${avatar.hair}"/><path d="M20 8c3-2 7-2 10 0" fill="none" stroke="${avatar.accent}" stroke-width="1.5"/>`,
+  };
+  const accessories = {
+    sprout: `<path d="M22 7V3" stroke="#609B70" stroke-width="2" stroke-linecap="round"/><path d="M22 4c-4 0-5-2-5-4 3 0 5 1 5 4Zm0 0c4 0 5-2 5-4-3 0-5 1-5 4Z" fill="#78B987"/>`,
+    glasses: `<circle cx="18" cy="20" r="3.5" fill="none" stroke="#64544C" stroke-width="1.4"/><circle cx="26" cy="20" r="3.5" fill="none" stroke="#64544C" stroke-width="1.4"/><path d="M21.5 20h1" stroke="#64544C" stroke-width="1.4"/>`,
+    flower: `<circle cx="31" cy="10" r="2" fill="#F6C95F"/><circle cx="31" cy="6.5" r="2.3" fill="#F29AAD"/><circle cx="34.2" cy="9" r="2.3" fill="#F29AAD"/><circle cx="33" cy="12.5" r="2.3" fill="#F29AAD"/><circle cx="29" cy="12.5" r="2.3" fill="#F29AAD"/><circle cx="27.8" cy="9" r="2.3" fill="#F29AAD"/>`,
+    stars: `<path d="m8 17 1 2.2 2.4.3-1.8 1.7.5 2.4L8 22.4l-2.1 1.2.5-2.4-1.8-1.7 2.4-.3L8 17Zm29-7 .8 1.7 1.9.3-1.4 1.3.3 1.9-1.6-.9-1.7.9.4-1.9-1.4-1.3 1.9-.3L37 10Z" fill="#FFD15C"/>`,
+    heart: `<path d="M33 8c-2-3-7 0-3 4l3 3 3-3c4-4-1-7-3-4Z" fill="#EF82A1"/>`,
+    beret: `<path d="M12 10c3-6 13-8 20-2l-2 4c-6-2-12-1-18 2v-4Z" fill="#E9829E"/><circle cx="23" cy="5" r="1.6" fill="#E9829E"/>`,
+    headphones: `<path d="M10 21v-3c0-8 5-13 12-13s12 5 12 13v3" fill="none" stroke="#5A8799" stroke-width="2.5"/><rect x="8" y="18" width="5" height="9" rx="2.5" fill="#79BCCA"/><rect x="31" y="18" width="5" height="9" rx="2.5" fill="#79BCCA"/>`,
+    bandage: `<rect x="27" y="16" width="6" height="2.6" rx="1.3" fill="#F4D4B7" transform="rotate(-18 30 17.3)"/><circle cx="29.3" cy="17.5" r=".35" fill="#D4AE91"/><circle cx="31.1" cy="17" r=".35" fill="#D4AE91"/>`,
+    cap: `<path d="M11 11c3-6 15-8 21-1l-1 5c-7-3-13-3-20 0v-4Z" fill="#5578A5"/><path d="M29 13c4-1 7 0 9 2-4 1-7 1-10 0l1-2Z" fill="#45678F"/>`,
+    freckles: `<circle cx="16" cy="23" r=".55" fill="#A66D55"/><circle cx="18" cy="23.7" r=".45" fill="#A66D55"/><circle cx="28" cy="23" r=".55" fill="#A66D55"/><circle cx="26" cy="23.7" r=".45" fill="#A66D55"/>`,
+    earring: `<circle cx="32" cy="22" r="1.6" fill="none" stroke="#F1C35F" stroke-width="1.2"/>`,
+    brow: `<path d="M16.5 17.2c1.4-.8 2.8-.8 4 0M23.5 17.2c1.4-.8 2.8-.8 4 0" fill="none" stroke="#3C302D" stroke-width="1.2" stroke-linecap="round"/>`,
+    beanie: `<path d="M10 13C12 5 18 2 24 3c6 1 9 5 10 11-8-3-16-3-24-1Z" fill="#937BC0"/><path d="M10 12c8-2 16-2 24 1l-.5 4c-8-2-15-2-23 0l-.5-5Z" fill="#7D68AA"/><circle cx="23" cy="3" r="3" fill="#B9A5DB"/>`,
+    scarf: `<path d="M14 31c5 3 11 3 16 0l2 5c-7 3-13 3-20 0l2-5Z" fill="#E58F88"/><path d="m28 34 5 8-5-1-2-6 2-1Z" fill="#D97D77"/>`,
+  };
+  return `
+    <svg viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="21" fill="${avatar.accent}" opacity=".28"/>
+      <circle cx="7" cy="8" r="2" fill="#fff" opacity=".55"/><circle cx="37" cy="31" r="3" fill="#fff" opacity=".4"/>
+      <path d="M8 44c1-10 6-15 14-15s13 5 14 15H8Z" fill="${avatar.shirt}"/>
+      ${hairStyles[avatar.style]}
+      <ellipse cx="22" cy="20" rx="10" ry="11" fill="${avatar.skin}"/>
+      <path d="M14 17c4-1 8-3 10-7 2 4 5 6 8 7" fill="none" stroke="${avatar.hair}" stroke-width="2.8" stroke-linecap="round"/>
+      <ellipse cx="18.5" cy="20" rx="1.25" ry="1.7" fill="#443936"/><ellipse cx="25.5" cy="20" rx="1.25" ry="1.7" fill="#443936"/>
+      <circle cx="18.1" cy="19.5" r=".4" fill="#fff"/><circle cx="25.1" cy="19.5" r=".4" fill="#fff"/>
+      <path d="M19 25c2 2 4 2 6 0" fill="#fff" stroke="#9A5C5C" stroke-width="1.3" stroke-linecap="round"/>
+      <ellipse cx="15.5" cy="23" rx="2" ry="1.3" fill="#F08F9C" opacity=".55"/><ellipse cx="28.5" cy="23" rx="2" ry="1.3" fill="#F08F9C" opacity=".55"/>
+      ${accessories[avatar.accessory]}
+    </svg>`;
+}
+
+function renderAvatarPickers() {
+  [elements.onboardingAvatarPicker, elements.profileAvatarPicker].forEach((picker, pickerIndex) => {
+    const selectedId = pickerIndex === 0 ? defaultState.profile.avatarId : state.profile.avatarId;
+    picker.innerHTML = avatars.map((avatar) => `
+      <label class="avatar-option" title="${avatar.label}">
+        <input type="radio" name="${pickerIndex === 0 ? "onboardingAvatar" : "profileAvatar"}" value="${avatar.id}" ${avatar.id === selectedId ? "checked" : ""}>
+        <span>${createAvatarSvg(avatar.id)}</span>
+        <small>${avatar.label}</small>
+      </label>
+    `).join("");
+  });
+}
+
+function getSelectedAvatarId(picker) {
+  return picker.querySelector("input:checked")?.value || defaultState.profile.avatarId;
 }
 
 function renderProfile(level = getProfileLevel()) {
-  if (!hasProfile()) return;
+  if (!hasProfile()) {
+    document.querySelector("#profileNickname").textContent = "Daily Grower";
+    document.querySelector("#profileLevel").textContent = level;
+    document.querySelector("#profileAvatar").innerHTML = createAvatarSvg(defaultState.profile.avatarId);
+    document.querySelector("#profileModalName").textContent = "Daily Grower";
+    document.querySelector("#profileModalLevel").textContent = level;
+    document.querySelector("#profileModalAvatar").innerHTML = createAvatarSvg(defaultState.profile.avatarId);
+    return;
+  }
   const nickname = state.profile.nickname;
   document.querySelector("#profileNickname").textContent = nickname;
   document.querySelector("#profileLevel").textContent = level;
-  document.querySelector("#profileAvatar").textContent = getInitials(nickname);
+  document.querySelector("#profileAvatar").innerHTML = createAvatarSvg(state.profile.avatarId);
   document.querySelector("#profileModalName").textContent = nickname;
   document.querySelector("#profileModalLevel").textContent = level;
-  document.querySelector("#profileModalAvatar").textContent = getInitials(nickname);
+  document.querySelector("#profileModalAvatar").innerHTML = createAvatarSvg(state.profile.avatarId);
 }
 
 function openProfileModal() {
@@ -714,11 +935,12 @@ function openProfileModal() {
   }
   const remaining = getNicknameCooldown();
   elements.profileNameInput.value = state.profile.nickname;
+  const avatarInput = elements.profileAvatarPicker.querySelector(`[value="${state.profile.avatarId}"]`);
+  if (avatarInput) avatarInput.checked = true;
   elements.profileNameInput.disabled = remaining > 0;
-  elements.saveProfileButton.disabled = remaining > 0;
   elements.profileCooldown.textContent = remaining > 0
-    ? `แก้ไขชื่อได้อีกครั้งใน ${formatCooldown(remaining)}`
-    : "คุณสามารถแก้ไขชื่อได้ 1 ครั้งต่อ 2 วัน";
+    ? `แก้ไขชื่อได้อีกครั้งใน ${formatCooldown(remaining)} แต่เปลี่ยน avatar ได้เสมอ`
+    : "คุณสามารถแก้ไขชื่อได้ 1 ครั้งต่อ 2 วัน และเปลี่ยน avatar ได้เสมอ";
   renderProfile();
   elements.profileModal.showModal();
 }
@@ -739,20 +961,24 @@ function formatCooldown(milliseconds) {
 
 function saveProfileNickname(event) {
   event.preventDefault();
-  if (getNicknameCooldown() > 0) return;
-  const nickname = elements.profileNameInput.value.trim();
-  if (!nickname) return;
-  state.profile.nickname = nickname.slice(0, 24);
-  state.profile.nicknameUpdatedAt = new Date().toISOString();
+  if (getNicknameCooldown() === 0) {
+    const nickname = elements.profileNameInput.value.trim();
+    if (!nickname) return;
+    if (nickname !== state.profile.nickname) {
+      state.profile.nickname = nickname.slice(0, 24);
+      state.profile.nicknameUpdatedAt = new Date().toISOString();
+    }
+  }
+  state.profile.avatarId = getSelectedAvatarId(elements.profileAvatarPicker);
   saveState();
   renderProfile();
   elements.profileModal.close();
-  showImportMessage("บันทึกชื่อเล่นใหม่แล้ว", "success");
+  showImportMessage("บันทึกโปรไฟล์แล้ว", "success");
 }
 
 function switchView(viewName) {
   const titles = {
-    today: "วันนี้ของคุณ",
+    today: "วันของคุณ",
     insights: "มองเห็นตัวเอง",
     year: "ภาพรวมหนึ่งปี",
     timeline: "เส้นทางเติบโต",
@@ -937,6 +1163,7 @@ function handleReflectionInput(event) {
   saveTimers[field] = setTimeout(() => {
     note.classList.add("show");
     setTimeout(() => note.classList.remove("show"), 1800);
+    renderDashboard();
     renderInsights();
     renderTimeline();
     renderYearOverview();
@@ -950,6 +1177,7 @@ function handleMoodSelect(event) {
   day.mood = day.mood === button.dataset.mood ? "" : button.dataset.mood;
   saveState();
   renderMood();
+  renderDashboard();
   renderTimeline();
   renderYearOverview();
 }
@@ -1371,7 +1599,7 @@ async function importData(event) {
   try {
     const imported = JSON.parse(await file.text());
     const normalized = normalizeImportedState(imported);
-    if (!normalized.profile.nickname && !importFromOnboarding && hasProfile()) {
+    if (!normalized.profile.nickname && hasProfile()) {
       normalized.profile = structuredClone(state.profile);
     }
     state = normalized;
@@ -1387,9 +1615,7 @@ async function importData(event) {
       if (!elements.onboardingModal.open) elements.onboardingModal.showModal();
       showNicknameStep();
     }
-    importFromOnboarding = false;
   } catch (error) {
-    importFromOnboarding = false;
     showImportMessage(error.message || "ไฟล์ JSON ไม่ถูกต้อง", "error");
   }
 }

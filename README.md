@@ -1,43 +1,29 @@
 # Daily Growth
 
-Daily Growth เป็นเว็บแอปติดตามการเติบโตประจำวัน พร้อม Cloud Sync ผ่าน Supabase เพื่อให้ข้อมูลต่อเนื่องระหว่างคอมพิวเตอร์และมือถือ
+เว็บแอปสำหรับติดตามการเติบโตเล็ก ๆ ในแต่ละวัน โดยเก็บข้อมูลทั้งหมดไว้ใน Local Storage ของเบราว์เซอร์
 
-## Features
+## เริ่มใช้งาน
 
-- สมัครสมาชิกและเข้าสู่ระบบด้วย Email/Password
-- รองรับ Google Login เมื่อเปิด Provider ใน Supabase
-- ข้อมูลแยกตามผู้ใช้ด้วย `user_id`
-- Sync ข้อมูลผ่าน Supabase Database
-- To-do, Good Things, Improvements, Mood, Timeline, EXP, Level, Reason Logs
-- Loading / Saving / Saved status
-- Export / Import JSON สำหรับสำรองหรือย้ายข้อมูลเดิม
-- Mobile First รองรับมือถือ แท็บเล็ต และเดสก์ท็อป
+เปิดไฟล์ `index.html` ด้วยเว็บเบราว์เซอร์ได้ทันที หรือเปิดผ่าน local server เช่นส่วนเสริม Live Server
 
-## Files
+## ความสามารถหลัก
 
-- `index.html` หน้าเว็บหลักและ Auth UI
-- `styles.css` ระบบดีไซน์ทั้งหมด
-- `app.js` Supabase client, auth, sync และ logic ของแอป
-- `supabase-schema.sql` SQL สำหรับสร้างตารางและ RLS policies
-- `SUPABASE_SETUP.md` คู่มือตั้งค่า Supabase และ deploy
+- Dashboard แสดง progress, งานที่เสร็จ, streak และ Growth Point
+- เพิ่ม แก้ไข ลบ และทำเครื่องหมายงานรายวัน
+- เลือกวันที่เพื่อวางรายการงานล่วงหน้า หรือย้อนดูวันก่อนหน้า
+- บันทึก Three Good Things และ Three Improvements
+- เลือกความรู้สึกประจำวัน
+- วิเคราะห์รูปแบบพฤติกรรมและหมวดงาน
+- ดูภาพรวมการเติบโตตลอด 1 ปี พร้อม Growth Map รายวัน
+- แยกสีวันที่มีงานค้าง งานสำเร็จบางส่วน และงานสำเร็จแล้ว
+- สะสม EXP จากภารกิจที่สำเร็จ พร้อมเลเวลใหม่ทุก 10 EXP
+- บันทึกเหตุผลเมื่อลบ เลื่อนวัน หรือพลาดภารกิจ เพื่อนำไปวิเคราะห์รูปแบบ
+- ดูประวัติย้อนหลังผ่าน Growth Timeline
+- สำรองข้อมูลเป็นไฟล์ JSON
+- นำเข้าข้อมูลจากไฟล์ JSON ที่สำรองไว้
+- ตั้งชื่อเล่นในครั้งแรก หรือกู้คืนโปรไฟล์เดิมจากไฟล์ JSON
+- แสดงชื่อเล่นและ Level บนหน้าหลัก
+- แก้ไขชื่อเล่นได้หนึ่งครั้งต่อ 2 วัน
+- รองรับมือถือ แท็บเล็ต และเดสก์ท็อป
 
-## Local Development
-
-เปิดผ่าน local server เช่น VS Code Live Server หรือ:
-
-```bash
-python -m http.server 4173
-```
-
-แล้วเปิด `http://localhost:4173`
-
-## Important
-
-ใน `app.js` ต้องแก้ค่า:
-
-```js
-const SUPABASE_URL = "https://dupafcuqsaxwkbwnhker.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
-```
-
-ใช้เฉพาะ anon public หรือ publishable key เท่านั้น ห้ามใช้ service role key ใน frontend
+ข้อมูลจะถูกเก็บใน key `daily-growth-data-v1` ของ Local Storage

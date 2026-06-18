@@ -7,7 +7,6 @@ const isSupabaseConfigured = !SUPABASE_URL.includes("YOUR_PROJECT_REF")
 const supabaseClient = isSupabaseConfigured && window.supabase
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
-const SELF_NOTE_CATEGORY = "__self_note__";
 
 const defaultState = {
   days: {},
@@ -104,12 +103,6 @@ const elements = {
   moveDateInput: document.querySelector("#moveDateInput"),
   overdueModal: document.querySelector("#overdueModal"),
   overdueForm: document.querySelector("#overdueForm"),
-  overdueOtherNote: document.querySelector("#overdueOtherNote"),
-  selfNoteForm: document.querySelector("#selfNoteForm"),
-  noteEventInput: document.querySelector("#noteEventInput"),
-  noteBodyInput: document.querySelector("#noteBodyInput"),
-  selfNotesList: document.querySelector("#selfNotesList"),
-  selfNotesEmpty: document.querySelector("#selfNotesEmpty"),
   onboardingModal: document.querySelector("#onboardingModal"),
   onboardingChoice: document.querySelector("#onboardingChoice"),
   nicknameForm: document.querySelector("#nicknameForm"),
@@ -143,7 +136,6 @@ async function init() {
   renderReflectionInputs();
   renderMood();
   renderInsights();
-  renderSelfNotes();
   renderTimeline();
   renderYearOverview();
   renderProfile();
@@ -539,24 +531,19 @@ function renderDashboard() {
 }
 
 function calculateStreak() {
-  const completedDates = new Set(Object.entries(state.days)
-    .filter(([, day]) => hasCompletedTask(day))
-    .map(([key]) => key));
+  const activeDates = Object.entries(state.days)
+    .filter(([, day]) => day.visited)
+    .map(([key]) => key);
 
   let streak = 0;
   const cursor = new Date();
   cursor.setHours(12, 0, 0, 0);
-  cursor.setDate(cursor.getDate() - 1);
 
-  while (completedDates.has(getDateKey(cursor))) {
+  while (activeDates.includes(getDateKey(cursor))) {
     streak += 1;
     cursor.setDate(cursor.getDate() - 1);
   }
-  return streak;
-}
-
-function hasCompletedTask(day) {
-  return (day?.tasks || []).some((task) => task.completed);
+  return Math.max(streak, 1);
 }
 
 function renderTasks() {
@@ -664,8 +651,6 @@ function bindEvents() {
   elements.taskReasonForm.addEventListener("change", handleDeleteReasonChange);
   elements.taskReasonForm.addEventListener("submit", handleTaskReasonSubmit);
   elements.overdueForm.addEventListener("submit", handleOverdueReasonSubmit);
-  elements.overdueForm.addEventListener("change", handleOverdueReasonChange);
-  elements.selfNoteForm.addEventListener("submit", handleSelfNoteSubmit);
   document.addEventListener("click", (event) => {
     const closeButton = event.target.closest("[data-close-dialog]");
     if (!closeButton) return;
@@ -770,7 +755,6 @@ function switchView(viewName) {
     today: "วันนี้ของคุณ",
     insights: "มองเห็นตัวเอง",
     year: "ภาพรวมหนึ่งปี",
-    notes: "บันทึกตัวเอง",
     timeline: "เส้นทางเติบโต",
   };
 
@@ -783,7 +767,6 @@ function switchView(viewName) {
 
   if (viewName === "insights") renderInsights();
   if (viewName === "year") renderYearOverview();
-  if (viewName === "notes") renderSelfNotes();
   if (viewName === "timeline") renderTimeline();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -992,28 +975,14 @@ function showCurrentOverdueTask() {
     return;
   }
   elements.overdueForm.reset();
-  elements.overdueOtherNote.classList.add("hidden");
-  elements.overdueOtherNote.querySelector("textarea").required = false;
   document.querySelector("#overdueCounter").textContent = `${overdueIndex + 1} จาก ${overdueQueue.length}`;
   document.querySelector("#overdueTaskName").textContent = current.task.title;
   if (!elements.overdueModal.open) elements.overdueModal.showModal();
 }
 
-function handleOverdueReasonChange(event) {
-  if (event.target.name !== "overdueReason") return;
-  const isOther = event.target.value === "อื่น ๆ";
-  const textarea = elements.overdueOtherNote.querySelector("textarea");
-  elements.overdueOtherNote.classList.toggle("hidden", !isOther);
-  textarea.required = isOther;
-  if (!isOther) textarea.value = "";
-}
-
 function handleOverdueReasonSubmit(event) {
   event.preventDefault();
-  const formData = new FormData(elements.overdueForm);
-  const selectedReason = formData.get("overdueReason");
-  const detail = String(formData.get("overdueReasonDetail") || "").trim();
-  const reason = selectedReason === "อื่น ๆ" && detail ? `อื่น ๆ: ${detail}` : selectedReason;
+  const reason = new FormData(elements.overdueForm).get("overdueReason");
   const current = overdueQueue[overdueIndex];
   if (!reason || !current) return;
 
@@ -1031,57 +1000,6 @@ function handleOverdueReasonSubmit(event) {
   saveState();
   overdueIndex += 1;
   showCurrentOverdueTask();
-}
-
-function handleSelfNoteSubmit(event) {
-  event.preventDefault();
-  const eventText = elements.noteEventInput.value.trim();
-  const noteText = elements.noteBodyInput.value.trim();
-  if (!eventText || !noteText) return;
-
-  state.reasonLogs.push({
-    id: createId(),
-    type: "missed",
-    reason: noteText.slice(0, 1000),
-    taskTitle: eventText.slice(0, 120),
-    category: SELF_NOTE_CATEGORY,
-    sourceDate: selectedDateKey,
-    createdAt: new Date().toISOString(),
-  });
-
-  elements.selfNoteForm.reset();
-  saveState();
-  renderSelfNotes();
-  renderTimeline();
-  showImportMessage("บันทึกข้อความถึงตัวเองแล้ว", "success");
-}
-
-function getSelfNotes() {
-  return state.reasonLogs
-    .filter((log) => log.category === SELF_NOTE_CATEGORY)
-    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-}
-
-function renderSelfNotes() {
-  if (!elements.selfNotesList) return;
-  const notes = getSelfNotes();
-  elements.selfNotesList.innerHTML = "";
-  elements.selfNotesEmpty.classList.toggle("hidden", notes.length > 0);
-
-  notes.forEach((note) => {
-    const date = note.createdAt ? new Date(note.createdAt) : parseDateKey(note.sourceDate || todayKey);
-    const card = document.createElement("article");
-    card.className = "self-note-card";
-    card.innerHTML = `
-      <div class="self-note-meta">
-        <span>${new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric" }).format(date)}</span>
-        <small>${note.sourceDate ? escapeHtml(note.sourceDate) : ""}</small>
-      </div>
-      <h3>${escapeHtml(note.taskTitle || "บันทึกถึงตัวเอง")}</h3>
-      <p>${escapeHtml(note.reason || "")}</p>
-    `;
-    elements.selfNotesList.appendChild(card);
-  });
 }
 
 function celebrate(origin, leveledUp = false) {
@@ -1197,7 +1115,6 @@ function renderPatterns(improvements, categories, days) {
   const patterns = [];
   const dayKeys = new Set(days.map(([key]) => key));
   const relevantLogs = state.reasonLogs
-    .filter((log) => log.category !== SELF_NOTE_CATEGORY)
     .filter((log) => !log.sourceDate || dayKeys.has(log.sourceDate));
   const missedReasonCounts = countValues(
     relevantLogs
@@ -1385,7 +1302,6 @@ function renderTimeline() {
     const completed = (day.tasks || []).filter((task) => task.completed);
     const goodThings = (day.goodThings || []).filter(Boolean);
     const improvements = (day.improvements || []).filter(Boolean);
-    const selfNotes = getSelfNotesForDate(key);
     const entry = document.createElement("article");
     entry.className = "timeline-entry";
     entry.innerHTML = `
@@ -1402,7 +1318,6 @@ function renderTimeline() {
         ${createTimelineSection("ก้าวที่ทำสำเร็จ", completed.map((task) => task.title), "")}
         ${createTimelineSection("เรื่องดี ๆ", goodThings, "good")}
         ${createTimelineSection("สิ่งที่อยากลองปรับ", improvements, "improve")}
-        ${createTimelineSection("บันทึกตัวเอง", selfNotes.map((note) => note.taskTitle || "บันทึกถึงตัวเอง"), "note")}
       </div>
     `;
     elements.timelineList.appendChild(entry);
@@ -1410,16 +1325,10 @@ function renderTimeline() {
 }
 
 function hasDayContent(day) {
-  const dateKey = Object.entries(state.days).find(([, value]) => value === day)?.[0];
   return (day.tasks || []).some((task) => task.completed)
     || (day.goodThings || []).some(Boolean)
     || (day.improvements || []).some(Boolean)
-    || Boolean(day.mood)
-    || (dateKey ? getSelfNotesForDate(dateKey).length > 0 : false);
-}
-
-function getSelfNotesForDate(dateKey) {
-  return state.reasonLogs.filter((log) => log.category === SELF_NOTE_CATEGORY && log.sourceDate === dateKey);
+    || Boolean(day.mood);
 }
 
 function createTimelineSection(title, items, className) {
@@ -1449,7 +1358,6 @@ function refreshAllViews() {
   renderReflectionInputs();
   renderMood();
   renderInsights();
-  renderSelfNotes();
   renderTimeline();
   renderYearOverview();
   renderProfile();

@@ -1,6 +1,8 @@
 const STORAGE_KEY = "daily-growth-data-v1";
 const AUTH_MEMORY_KEY = "daily-growth-auth-memory-v1";
 const AUTH_SESSION_KEY = "daily-growth-supabase-session-v1";
+const STREAK_NOTICE_KEY = "daily-growth-streak-notice-v1";
+const CLOUD_SYNC_TABLE = "daily_growth_profiles";
 const SUPABASE_URL = "https://dupafcuqsaxwkbwnhker.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7QdttccZ5yJgQwp4CtxWhQ_oIJ3zyOi";
 const supabaseClient = createSupabaseAuthClient();
@@ -127,7 +129,12 @@ function createSupabaseAuthClient() {
       },
       async signInWithOAuth({ provider, options = {} }) {
         const redirectTo = options.redirectTo || `${window.location.origin}${window.location.pathname}`;
-        window.location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&redirect_to=${encodeURIComponent(redirectTo)}`;
+        const query = new URLSearchParams({
+          provider,
+          redirect_to: redirectTo,
+          prompt: options.prompt || "select_account",
+        });
+        window.location.href = `${SUPABASE_URL}/auth/v1/authorize?${query.toString()}`;
         return { data: null, error: null };
       },
       async signOut() {
@@ -149,6 +156,7 @@ const defaultState = {
   days: {},
   points: 0,
   lastActiveDate: null,
+  journals: [],
   reasonLogs: [],
   profile: {
     nickname: "",
@@ -200,6 +208,10 @@ let saveTimers = {};
 let pendingTaskAction = null;
 let overdueQueue = [];
 let overdueIndex = 0;
+let activeSession = null;
+let syncTimer = null;
+let isApplyingCloudState = false;
+let hasShownSyncWarning = false;
 
 const todayKey = getDateKey(new Date());
 let selectedDateKey = todayKey;
@@ -214,6 +226,7 @@ const elements = {
   authPasswordInput: document.querySelector("#authPasswordInput"),
   rememberLoginInput: document.querySelector("#rememberLoginInput"),
   googleLoginBtn: document.querySelector("#googleLoginBtn"),
+  mobileMenuBtn: document.querySelector("#mobileMenuBtn"),
   fullDate: document.querySelector("#fullDate"),
   pageTitle: document.querySelector("#pageTitle"),
   progressPercent: document.querySelector("#progressPercent"),
@@ -242,6 +255,11 @@ const elements = {
   goodSaved: document.querySelector("#goodSaved"),
   improveSaved: document.querySelector("#improveSaved"),
   moodOptions: document.querySelector("#moodOptions"),
+  journalForm: document.querySelector("#journalForm"),
+  journalEventInput: document.querySelector("#journalEventInput"),
+  journalTextInput: document.querySelector("#journalTextInput"),
+  journalList: document.querySelector("#journalList"),
+  journalEmpty: document.querySelector("#journalEmpty"),
   toast: document.querySelector("#toast"),
   confettiLayer: document.querySelector("#confettiLayer"),
   insightRange: document.querySelector("#insightRange"),
@@ -261,6 +279,8 @@ const elements = {
   moveDateInput: document.querySelector("#moveDateInput"),
   overdueModal: document.querySelector("#overdueModal"),
   overdueForm: document.querySelector("#overdueForm"),
+  overdueOtherField: document.querySelector("#overdueOtherField"),
+  overdueOtherInput: document.querySelector("#overdueOtherInput"),
   onboardingModal: document.querySelector("#onboardingModal"),
   onboardingChoice: document.querySelector("#onboardingChoice"),
   onboardingStartBtn: document.querySelector("#onboardingStartBtn"),
@@ -287,6 +307,7 @@ function init() {
   renderReflectionInputs();
   renderMood();
   renderInsights();
+  renderJournals();
   renderTimeline();
   renderYearOverview();
   renderAvatarPickers();
@@ -305,6 +326,7 @@ function loadState() {
       ...defaultState,
       ...saved,
       days: saved.days || {},
+      journals: normalizeJournalEntries(saved.journals),
       reasonLogs: Array.isArray(saved.reasonLogs) ? saved.reasonLogs : [],
       profile: normalizeProfile(saved.profile),
     };
@@ -329,6 +351,20 @@ function normalizeProfile(profile) {
   };
 }
 
+function normalizeJournalEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      id: typeof entry.id === "string" ? entry.id : createId(),
+      event: typeof entry.event === "string" ? entry.event.slice(0, 120) : "",
+      text: typeof entry.text === "string" ? entry.text.slice(0, 1200) : "",
+      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+    }))
+    .filter((entry) => entry.event || entry.text)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
 function hasProfile() {
   return Boolean(state.profile?.nickname);
 }
@@ -341,6 +377,90 @@ function countCompletedTasks(days) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSync();
+}
+
+function getCloudPayload() {
+  return {
+    days: state.days,
+    points: countCompletedTasks(state.days),
+    lastActiveDate: state.lastActiveDate,
+    journals: state.journals || [],
+    reasonLogs: state.reasonLogs || [],
+    profile: state.profile,
+  };
+}
+
+function scheduleCloudSync() {
+  if (!activeSession?.access_token || isApplyingCloudState) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncStateToCloud(), 700);
+}
+
+async function syncStateToCloud() {
+  if (!activeSession?.user?.id || !activeSession.access_token) return;
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${CLOUD_SYNC_TABLE}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${activeSession.access_token}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify({
+      user_id: activeSession.user.id,
+      data: getCloudPayload(),
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok && !hasShownSyncWarning) {
+    hasShownSyncWarning = true;
+    showImportMessage("ยังซิงค์ข้อมูลขึ้น cloud ไม่ได้ กรุณาตรวจตาราง Supabase", "error");
+  }
+}
+
+async function pullStateFromCloud(session) {
+  if (!session?.user?.id || !session.access_token) return false;
+  const url = `${SUPABASE_URL}/rest/v1/${CLOUD_SYNC_TABLE}?user_id=eq.${encodeURIComponent(session.user.id)}&select=data,updated_at&limit=1`;
+  const response = await fetch(url, {
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+  if (!response.ok) {
+    if (!hasShownSyncWarning) {
+      hasShownSyncWarning = true;
+      showImportMessage("ยังดึงข้อมูล cloud ไม่ได้ กรุณาตรวจตาราง Supabase", "error");
+    }
+    return false;
+  }
+
+  const rows = await response.json().catch(() => []);
+  const cloudState = rows[0]?.data;
+  if (!cloudState || typeof cloudState !== "object") return false;
+
+  isApplyingCloudState = true;
+  state = normalizeCloudState(cloudState);
+  ensureDay(todayKey);
+  markActiveDay();
+  isApplyingCloudState = false;
+  refreshAllViews();
+  return true;
+}
+
+function normalizeCloudState(cloudState) {
+  const normalized = {
+    ...defaultState,
+    ...cloudState,
+    days: cloudState.days || {},
+    journals: normalizeJournalEntries(cloudState.journals),
+    reasonLogs: Array.isArray(cloudState.reasonLogs) ? cloudState.reasonLogs : [],
+    profile: normalizeProfile(cloudState.profile),
+  };
+  normalized.points = countCompletedTasks(normalized.days);
+  return normalized;
 }
 
 function ensureDay(key) {
@@ -468,23 +588,38 @@ function renderDashboard() {
 }
 
 function calculateStreak() {
-  const activeDates = Object.entries(state.days)
-    .filter(([, day]) => hasGrowthActivity(day))
-    .map(([key]) => key);
+  return calculateCompletedTaskStreakFrom(addDays(new Date(), -1));
+}
 
+function calculateCompletedTaskStreakFrom(startDate) {
   let streak = 0;
-  const cursor = new Date();
+  const cursor = new Date(startDate);
   cursor.setHours(12, 0, 0, 0);
 
-  while (activeDates.includes(getDateKey(cursor))) {
+  while (hasCompletedTaskDay(state.days[getDateKey(cursor)])) {
     streak += 1;
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
 }
 
+function maybeShowStreakResetNotice() {
+  const yesterday = addDays(new Date(), -1);
+  const yesterdayKey = getDateKey(yesterday);
+  const previousStreak = calculateCompletedTaskStreakFrom(addDays(new Date(), -2));
+  const noticeKey = `${yesterdayKey}:${previousStreak}`;
+  if (hasCompletedTaskDay(state.days[yesterdayKey]) || previousStreak === 0) return;
+  if (localStorage.getItem(STREAK_NOTICE_KEY) === noticeKey) return;
+  localStorage.setItem(STREAK_NOTICE_KEY, noticeKey);
+  showImportMessage("วันต่อเนื่องของคุณหายไปแล้ว แต่ไม่เป็นไรนะ เราเริ่ม 1 ได้เสมอ", "error");
+}
+
+function hasCompletedTaskDay(day) {
+  return Boolean(day && (day.tasks || []).some((task) => task.completed));
+}
+
 function hasGrowthActivity(day) {
-  return (day.tasks || []).some((task) => task.completed)
+  return hasCompletedTaskDay(day)
     || (day.goodThings || []).some(Boolean)
     || (day.improvements || []).some(Boolean)
     || Boolean(day.mood);
@@ -551,7 +686,10 @@ function renderMood() {
 
 function bindEvents() {
   document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.view));
+    button.addEventListener("click", () => {
+      switchView(button.dataset.view);
+      closeMobileSidebar();
+    });
   });
 
   document.querySelector("#openTaskModal").addEventListener("click", openNewTaskModal);
@@ -564,6 +702,7 @@ function bindEvents() {
   });
 
   elements.moodOptions.addEventListener("click", handleMoodSelect);
+  elements.journalForm.addEventListener("submit", handleJournalSubmit);
   elements.insightRange.addEventListener("change", renderInsights);
   elements.selectedDateInput.addEventListener("change", (event) => selectDate(event.target.value));
   document.querySelector("#previousDayBtn").addEventListener("click", () => changeSelectedDate(-1));
@@ -578,6 +717,7 @@ function bindEvents() {
   });
   elements.authForm.addEventListener("submit", handleSupabaseAuthSubmit);
   elements.googleLoginBtn.addEventListener("click", handleSupabaseGoogleLogin);
+  elements.mobileMenuBtn.addEventListener("click", toggleMobileSidebar);
   elements.onboardingStartBtn.addEventListener("click", showNicknameStep);
   elements.nicknameForm.addEventListener("submit", saveInitialNickname);
   elements.onboardingModal.addEventListener("cancel", (event) => event.preventDefault());
@@ -586,12 +726,28 @@ function bindEvents() {
   elements.profileForm.addEventListener("submit", saveProfileNickname);
   elements.taskReasonForm.addEventListener("change", handleDeleteReasonChange);
   elements.taskReasonForm.addEventListener("submit", handleTaskReasonSubmit);
+  elements.overdueForm.addEventListener("change", handleOverdueReasonChange);
   elements.overdueForm.addEventListener("submit", handleOverdueReasonSubmit);
   document.addEventListener("click", (event) => {
     const closeButton = event.target.closest("[data-close-dialog]");
-    if (!closeButton) return;
-    closeButton.closest("dialog")?.close();
+    if (closeButton) closeButton.closest("dialog")?.close();
+
+    if (
+      document.body.classList.contains("sidebar-open") &&
+      !event.target.closest(".sidebar") &&
+      !event.target.closest("#mobileMenuBtn")
+    ) {
+      closeMobileSidebar();
+    }
   });
+}
+
+function toggleMobileSidebar() {
+  document.body.classList.toggle("sidebar-open");
+}
+
+function closeMobileSidebar() {
+  document.body.classList.remove("sidebar-open");
 }
 
 function prepareAuthForm() {
@@ -607,6 +763,7 @@ function prepareAuthForm() {
 
 function showLanding() {
   document.body.classList.remove("is-authenticated");
+  closeMobileSidebar();
   elements.onboardingModal.close();
 }
 
@@ -627,22 +784,27 @@ async function initializeAuth() {
     return;
   }
 
-  applySupabaseSession(data.session);
+  await applySupabaseSession(data.session);
   supabaseClient.auth.onAuthStateChange((_event, session) => {
     applySupabaseSession(session);
   });
 }
 
-function applySupabaseSession(session) {
+async function applySupabaseSession(session) {
   if (!session?.user) {
+    activeSession = null;
     showLanding();
     return;
   }
 
+  activeSession = session;
   syncProfileFromUser(session.user);
+  const hasCloudState = await pullStateFromCloud(session);
+  if (!hasCloudState) syncStateToCloud();
   renderProfile();
   showApp();
   prepareOverdueCheck();
+  maybeShowStreakResetNotice();
 }
 
 function syncProfileFromUser(user) {
@@ -695,7 +857,7 @@ async function handleSupabaseAuthSubmit(event) {
   try {
     const signInResult = await supabaseClient.auth.signInWithPassword({ email, password });
     if (!signInResult.error) {
-      applySupabaseSession(signInResult.data.session);
+      await applySupabaseSession(signInResult.data.session);
       showImportMessage("เข้าสู่ระบบสำเร็จ", "success");
       return;
     }
@@ -714,7 +876,7 @@ async function handleSupabaseAuthSubmit(event) {
     if (signUpResult.error) throw signUpResult.error;
 
     if (signUpResult.data.session) {
-      applySupabaseSession(signUpResult.data.session);
+      await applySupabaseSession(signUpResult.data.session);
       showImportMessage("สมัครสมาชิกและเข้าสู่ระบบสำเร็จ", "success");
     } else {
       showImportMessage("สมัครสมาชิกสำเร็จ กรุณาเช็กอีเมลเพื่อยืนยันบัญชี", "success");
@@ -737,6 +899,7 @@ async function handleSupabaseGoogleLogin() {
     provider: "google",
     options: {
       redirectTo: `${window.location.origin}${window.location.pathname}`,
+      prompt: "select_account",
     },
   });
 
@@ -752,6 +915,7 @@ async function logoutSupabaseProfile() {
     }
   }
 
+  activeSession = null;
   state.profile = structuredClone(defaultState.profile);
   saveState();
   renderProfile();
@@ -983,6 +1147,7 @@ function switchView(viewName) {
     year: "ภาพรวมหนึ่งปี",
     timeline: "เส้นทางเติบโต",
   };
+  titles.journal = "บันทึกถึงตัวเอง";
 
   document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   document.querySelector(`#${viewName}View`).classList.add("active");
@@ -993,6 +1158,7 @@ function switchView(viewName) {
 
   if (viewName === "insights") renderInsights();
   if (viewName === "year") renderYearOverview();
+  if (viewName === "journal") renderJournals();
   if (viewName === "timeline") renderTimeline();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1148,6 +1314,50 @@ function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
+function handleJournalSubmit(event) {
+  event.preventDefault();
+  const journalEvent = elements.journalEventInput.value.trim();
+  const text = elements.journalTextInput.value.trim();
+  if (!journalEvent || !text) return;
+
+  state.journals.unshift({
+    id: createId(),
+    event: journalEvent.slice(0, 120),
+    text: text.slice(0, 1200),
+    createdAt: new Date().toISOString(),
+  });
+  saveState();
+  elements.journalForm.reset();
+  renderJournals();
+  showImportMessage("บันทึกข้อความถึงตัวเองแล้ว", "success");
+}
+
+function renderJournals() {
+  const journals = normalizeJournalEntries(state.journals);
+  state.journals = journals;
+  if (!elements.journalList || !elements.journalEmpty) return;
+
+  elements.journalList.innerHTML = "";
+  elements.journalEmpty.classList.toggle("hidden", journals.length > 0);
+  const formatter = new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  journals.forEach((entry) => {
+    const article = document.createElement("article");
+    article.className = "journal-entry";
+    article.innerHTML = `
+      <div class="journal-entry-head">
+        <strong>${escapeHtml(entry.event)}</strong>
+        <span>${formatter.format(new Date(entry.createdAt))}</span>
+      </div>
+      <p>${escapeHtml(entry.text).replace(/\n/g, "<br>")}</p>
+    `;
+    elements.journalList.appendChild(article);
+  });
+}
+
 function handleReflectionInput(event) {
   const input = event.target;
   if (!input.matches("input[data-field]")) return;
@@ -1203,23 +1413,38 @@ function showCurrentOverdueTask() {
     return;
   }
   elements.overdueForm.reset();
+  elements.overdueOtherField.classList.add("hidden");
+  elements.overdueOtherInput.required = false;
+  elements.overdueOtherInput.value = "";
   document.querySelector("#overdueCounter").textContent = `${overdueIndex + 1} จาก ${overdueQueue.length}`;
   document.querySelector("#overdueTaskName").textContent = current.task.title;
   if (!elements.overdueModal.open) elements.overdueModal.showModal();
 }
 
+function handleOverdueReasonChange(event) {
+  if (event.target.name !== "overdueReason") return;
+  const isOther = event.target.value === "อื่น ๆ" || event.target.value === "à¸­à¸·à¹ˆà¸™ à¹†";
+  elements.overdueOtherField.classList.toggle("hidden", !isOther);
+  elements.overdueOtherInput.required = isOther;
+  if (isOther) requestAnimationFrame(() => elements.overdueOtherInput.focus());
+}
+
 function handleOverdueReasonSubmit(event) {
   event.preventDefault();
   const reason = new FormData(elements.overdueForm).get("overdueReason");
+  const detail = elements.overdueOtherInput.value.trim();
   const current = overdueQueue[overdueIndex];
   if (!reason || !current) return;
+  if ((reason === "อื่น ๆ" || reason === "à¸­à¸·à¹ˆà¸™ à¹†") && !detail) return;
 
   current.task.missedReason = reason;
+  current.task.missedDetail = detail;
   current.task.missedReviewedAt = new Date().toISOString();
   state.reasonLogs.push({
     id: createId(),
     type: "missed",
     reason,
+    detail,
     taskTitle: current.task.title,
     category: current.task.category,
     sourceDate: current.dateKey,
@@ -1586,6 +1811,7 @@ function refreshAllViews() {
   renderReflectionInputs();
   renderMood();
   renderInsights();
+  renderJournals();
   renderTimeline();
   renderYearOverview();
   renderProfile();

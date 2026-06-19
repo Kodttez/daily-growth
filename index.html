@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260618-sync">
+  <link rel="stylesheet" href="styles.css?v=20260619-sync-mobile">
 </head>
 <body>
   <section class="landing-page" id="landingPage">
@@ -160,6 +160,10 @@
           <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4m8-4v4M3 10h18M7 14h2m3 0h2m3 0h1M7 18h2m3 0h2"/></svg>
           <span>ภาพรวมปี</span>
         </button>
+        <button class="nav-item" data-view="journal">
+          <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+          <span>บันทึกตัวเอง</span>
+        </button>
         <button class="nav-item" data-view="timeline">
           <svg viewBox="0 0 24 24"><path d="M6 3v18m0-15h12l-3 4 3 4H6"/></svg>
           <span>เส้นทางเติบโต</span>
@@ -179,6 +183,9 @@
           <h1 id="pageTitle">วันของคุณ</h1>
         </div>
         <div class="topbar-actions">
+          <button class="icon-button mobile-menu-button" id="mobileMenuBtn" title="เปิดเมนู" aria-label="เปิดเมนู">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
           <button class="icon-button logout-button" id="logoutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ">
             <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg>
           </button>
@@ -454,6 +461,43 @@
         </section>
       </section>
 
+      <section class="view" id="journalView">
+        <div class="view-intro">
+          <div>
+            <p class="section-kicker">SELF NOTES</p>
+            <h2>บันทึกถึงตัวเอง</h2>
+            <p>เก็บไอเดีย ความรู้สึก หรือเหตุการณ์เล็ก ๆ ที่อยากกลับมาอ่านในวันที่ต้องการเข้าใจตัวเองมากขึ้น</p>
+          </div>
+        </div>
+
+        <div class="journal-layout">
+          <form class="panel journal-form" id="journalForm">
+            <label>
+              เหตุการณ์หรือสิ่งที่ทำให้อยากบันทึก
+              <input type="text" id="journalEventInput" maxlength="120" placeholder="เช่น วันนี้ได้คุยเรื่องสำคัญ / มีไอเดียใหม่ / รู้สึกบางอย่าง" required>
+            </label>
+            <label>
+              ข้อความถึงตัวเอง
+              <textarea id="journalTextInput" rows="7" maxlength="1200" placeholder="เขียนสิ่งที่คิด รู้สึก หรืออยากจำไว้ตรงนี้..." required></textarea>
+            </label>
+            <div class="modal-actions">
+              <button class="primary-button" type="submit">บันทึกข้อความนี้</button>
+            </div>
+          </form>
+
+          <section class="journal-history" aria-label="บันทึกย้อนหลัง">
+            <div class="journal-list" id="journalList"></div>
+            <div class="empty-state journal-empty" id="journalEmpty">
+              <span class="empty-illustration">
+                <svg viewBox="0 0 64 64"><path d="M18 12h28v40H18z"/><path d="M25 23h14M25 31h14M25 39h9"/></svg>
+              </span>
+              <h3>ยังไม่มีบันทึก</h3>
+              <p>เริ่มจากเหตุการณ์เล็ก ๆ ที่อยากเก็บไว้ให้ตัวเองในอนาคตอ่านก็พอ</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section class="view" id="timelineView">
         <div class="view-intro">
           <div>
@@ -486,6 +530,10 @@
     <button class="nav-item" data-view="year">
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4m8-4v4M3 10h18"/></svg>
       <span>ภาพรวมปี</span>
+    </button>
+    <button class="nav-item" data-view="journal">
+      <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+      <span>บันทึก</span>
     </button>
     <button class="nav-item" data-view="timeline">
       <svg viewBox="0 0 24 24"><path d="M6 3v18m0-15h12l-3 4 3 4H6"/></svg>
@@ -569,7 +617,12 @@
         <label><input type="radio" name="overdueReason" value="ลืม" required><span>ลืม</span></label>
         <label><input type="radio" name="overdueReason" value="ไม่มีเวลา"><span>ไม่มีเวลา</span></label>
         <label><input type="radio" name="overdueReason" value="เหนื่อย/ล้า"><span>เหนื่อย/ล้า</span></label>
+        <label><input type="radio" name="overdueReason" value="อื่น ๆ"><span>อื่น ๆ</span></label>
       </fieldset>
+      <label class="overdue-other-field hidden" id="overdueOtherField">
+        อธิบายเหตุผลเพิ่มเติม
+        <textarea id="overdueOtherInput" rows="3" maxlength="300" placeholder="เขียนเหตุผลของคุณไว้ตรงนี้"></textarea>
+      </label>
       <div class="modal-actions">
         <button class="primary-button" id="saveOverdueReason" type="submit">บันทึกและดูรายการถัดไป</button>
       </div>
@@ -660,6 +713,6 @@
   </div>
 
   <div class="confetti-layer" id="confettiLayer" aria-hidden="true"></div>
-  <script src="app.js?v=20260618-sync"></script>
+  <script src="app.js?v=20260619-sync-mobile"></script>
 </body>
 </html>
